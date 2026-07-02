@@ -1,80 +1,88 @@
-import { NextRequest, NextResponse } from "next/server";
-import Stripe from "stripe";
-import { corsHeaders, getCorsHeaders } from "@/lib/cors";
-import { PRODUCT_PRICE_MAP } from "@/lib/products";
-import { getStripe } from "@/lib/stripe";
+import Stripe from "stripe"
 
-export const runtime = "nodejs";
+export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
 
-type CheckoutRequestBody = {
-  items?: unknown;
-};
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string)
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, {
-    status: 204,
-    headers: getCorsHeaders(request),
-  });
+const PRODUCT_PRICE_MAP: Record<string, string> = {
+    msn: "price_1ToioORtNm75vIFItIQYFEm7",
+    reuters: "price_1ToiyORtNm75vIFInjjJeQxF",
 }
 
-export async function POST(request: NextRequest) {
-  const headers = getCorsHeaders(request);
-
-  try {
-    const frontendUrl = process.env.FRONTEND_URL;
-
-    if (!frontendUrl) {
-      return jsonError("FRONTEND_URL is not configured.", 500, headers);
-    }
-
-    const body = (await request.json()) as CheckoutRequestBody;
-
-    if (!Array.isArray(body.items) || body.items.length === 0) {
-      return jsonError("Request body must include a non-empty items array.", 400, headers);
-    }
-
-    const uniqueProductIds = [...new Set(body.items)]
-      .filter((item): item is string => typeof item === "string")
-      .map((item) => item.trim())
-      .filter(Boolean);
-
-    if (uniqueProductIds.length === 0) {
-      return jsonError("Items array must contain at least one valid product ID.", 400, headers);
-    }
-
-    const unknownProductIds = uniqueProductIds.filter(
-      (productId) => !(productId in PRODUCT_PRICE_MAP),
-    );
-
-    if (unknownProductIds.length > 0) {
-      return jsonError(`Unknown product ID(s): ${unknownProductIds.join(", ")}`, 400, headers);
-    }
-
-    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = uniqueProductIds.map(
-      (productId) => ({
-        price: PRODUCT_PRICE_MAP[productId],
-        quantity: 1,
-      }),
-    );
-
-    const session = await getStripe().checkout.sessions.create({
-      mode: "payment",
-      line_items: lineItems,
-      success_url: `${frontendUrl.replace(/\/$/, "")}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${frontendUrl.replace(/\/$/, "")}/cancel`,
-      customer_creation: "if_required",
-      metadata: {
-        selected_products: JSON.stringify(uniqueProductIds),
-      },
-    });
-
-    return NextResponse.json({ url: session.url }, { status: 200, headers });
-  } catch (error) {
-    console.error("Failed to create checkout session:", error);
-    return jsonError("Unable to create checkout session.", 500, headers);
-  }
+const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
 }
 
-function jsonError(message: string, status: number, headers: HeadersInit) {
-  return NextResponse.json({ error: message }, { status, headers: { ...corsHeaders, ...headers } });
+export async function OPTIONS() {
+    return new Response(null, {
+        status: 204,
+        headers: corsHeaders,
+    })
+}
+
+export async function POST(request: Request) {
+    try {
+        if (!process.env.STRIPE_SECRET_KEY) {
+            return Response.json(
+                { error: "Missing STRIPE_SECRET_KEY" },
+                { status: 500, headers: corsHeaders }
+            )
+        }
+
+        if (!process.env.FRONTEND_URL) {
+            return Response.json(
+                { error: "Missing FRONTEND_URL" },
+                { status: 500, headers: corsHeaders }
+            )
+        }
+
+        const body = await request.json()
+        const items = body.items
+
+        if (!Array.isArray(items) || items.length === 0) {
+            return Response.json(
+                { error: "No products selected." },
+                { status: 400, headers: corsHeaders }
+            )
+        }
+
+        const uniqueItems = [...new Set(items)]
+
+        const line_items = uniqueItems.map((productId) => {
+            const id = String(productId).trim()
+            const priceId = PRODUCT_PRICE_MAP[id]
+
+            if (!priceId) {
+                throw new Error(`Invalid product ID: ${id}`)
+            }
+
+            return {
+                price: priceId,
+                quantity: 1,
+            }
+        })
+
+        const session = await stripe.checkout.sessions.create({
+            mode: "payment",
+            line_items,
+            success_url: `${process.env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${process.env.FRONTEND_URL}/cancel`,
+            metadata: {
+                selected_products: uniqueItems.join(","),
+            },
+        })
+
+        return Response.json(
+            { url: session.url },
+            { status: 200, headers: corsHeaders }
+        )
+    } catch (error: any) {
+        return Response.json(
+            { error: error.message || "Checkout failed." },
+            { status: 500, headers: corsHeaders }
+        )
+    }
 }
