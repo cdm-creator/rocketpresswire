@@ -9,13 +9,13 @@ const PRODUCT_DATA = {
     msn: {
         name: "MSN",
         delivery: "5 Days",
-        priceId: "price_1ToioORtNm75vIFItIQYFEm7",
+        priceId: "price_1Tq8bFRvo61AD2cgV6by04aS",
     },
 
     reuters: {
         name: "Reuters",
         delivery: "7 Days",
-        priceId: "price_1ToiyORtNm75vIFInjjJeQxF",
+        priceId: "price_1Tq8cPRvo61AD2cgeWCTcRyd",
     },
 
     openPR: {
