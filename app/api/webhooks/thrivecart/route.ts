@@ -1,3 +1,4 @@
+import { calculateExpectedCompletionAt } from "@/lib/order-items"
 import { supabaseAdmin } from "@/lib/supabase-admin"
 
 export const runtime = "nodejs"
@@ -607,6 +608,8 @@ export async function POST(request: Request) {
             throw orderError
         }
 
+        const deliveryText = null
+
         const { error: orderItemsError } = await supabaseAdmin
             .from("order_items")
             .insert({
@@ -616,7 +619,8 @@ export async function POST(request: Request) {
                 quantity,
                 unit_amount: unitAmount,
                 item_status: "processing",
-                delivery_text: null,
+                delivery_text: deliveryText,
+                expected_completion_at: calculateExpectedCompletionAt(deliveryText),
                 published_url: null,
             })
 

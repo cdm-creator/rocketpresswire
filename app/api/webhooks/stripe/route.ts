@@ -1,5 +1,6 @@
 import type Stripe from "stripe"
 
+import { calculateExpectedCompletionAt } from "@/lib/order-items"
 import { supabaseAdmin } from "@/lib/supabase-admin"
 import { getStripe } from "@/lib/stripe"
 
@@ -244,6 +245,7 @@ export async function POST(request: Request) {
             unit_amount: unitAmount,
             item_status: "processing",
             delivery_text: product.delivery,
+            expected_completion_at: calculateExpectedCompletionAt(product.delivery),
             published_url: null,
         }))
 
