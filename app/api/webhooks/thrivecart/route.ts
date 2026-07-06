@@ -485,62 +485,57 @@ export async function POST(request: Request) {
     }
 
     const payloadObject = isJsonObject(payload) ? payload : {}
-    const customerPayload = payloadObject.customer
-    const orderPayload = payloadObject.order
-    const purchasePayload = payloadObject.purchase
-    const baseProductPayload = payloadObject.base_product
-
-    console.log(
-        "[thrivecart-webhook] Payload keys:",
-        Object.keys(payloadObject)
-    )
-    console.log(
-        "[thrivecart-webhook] Customer keys:",
-        isJsonObject(customerPayload) ? Object.keys(customerPayload) : null
-    )
-    console.log(
-        "[thrivecart-webhook] Order keys:",
-        isJsonObject(orderPayload) ? Object.keys(orderPayload) : null
-    )
-    console.log(
-        "[thrivecart-webhook] Purchase keys:",
-        isJsonObject(purchasePayload) ? Object.keys(purchasePayload) : null
-    )
-    console.log(
-        "[thrivecart-webhook] Base product keys:",
-        isJsonObject(baseProductPayload) ? Object.keys(baseProductPayload) : null
-    )
-    console.log(
-        "[thrivecart-webhook] Raw safe summary:",
-        redactSensitiveFields({
-            event: payloadObject.event,
-            customer_email: payloadObject.customer_email,
-            customer_firstname: payloadObject.customer_firstname,
-            customer_lastname: payloadObject.customer_lastname,
-            order_id: payloadObject.order_id,
-            invoice_id: payloadObject.invoice_id,
-            base_product: payloadObject.base_product,
-            order: payloadObject.order,
-            purchase: payloadObject.purchase,
-            currency: payloadObject.currency,
-            amount: payloadObject.amount,
-            total: payloadObject.total,
-        })
-    )
-
     const eventType = getEventType(payload)
-    const customerEmail = getCustomerEmail(payload)
-    const customerName = getCustomerName(payload)
-    const externalOrderId = getExternalOrderId(payload)
-    const amountTotal = getOrderAmount(payload)
-    const currency = getCurrency(payload)
-    const orderItems = extractOrderItems(payload, amountTotal)
+    const customerEmail = String(payloadObject["customer[email]"] || "")
+        .trim()
+        .toLowerCase()
+    const customerName =
+        String(
+            payloadObject["customer[name]"] ||
+                payloadObject["customer[first_name]"] ||
+                ""
+        ).trim() || null
+    const externalOrderId = String(
+        payloadObject.order_id ||
+            payloadObject["order[id]"] ||
+            payloadObject.invoice_id ||
+            ""
+    ).trim()
+    const currency = String(payloadObject.currency || "USD")
+        .trim()
+        .toLowerCase()
+    const amountTotal = Number(payloadObject["order[total]"] || 0)
+    const productId = String(
+        payloadObject["order[charges][0][item_identifier]"] ||
+            payloadObject.base_product ||
+            ""
+    ).trim()
+    const productName =
+        String(
+            payloadObject["order[charges][0][name]"] ||
+                payloadObject["order[charges][0][label]"] ||
+                payloadObject.base_product_name ||
+                "ThriveCart Product"
+        ).trim() || "ThriveCart Product"
+    const quantity = Number(payloadObject["order[charges][0][quantity]"] || 1)
+    const unitAmount = Number(
+        payloadObject["order[charges][0][unit_price]"] ||
+            payloadObject["order[charges][0][amount]"] ||
+            0
+    )
 
     console.log("[thrivecart-webhook] Received event", {
         method: request.method,
         contentType,
         eventType,
         externalOrderId,
+        customerEmailPresent: Boolean(customerEmail),
+        amountTotal,
+        currency,
+        productId,
+        productName,
+        quantity,
+        unitAmount,
     })
 
     if (!isSuccessfulPurchaseEvent(payload)) {
@@ -555,19 +550,21 @@ export async function POST(request: Request) {
     if (
         !customerEmail ||
         !externalOrderId ||
-        amountTotal === null ||
+        !Number.isFinite(amountTotal) ||
         !currency ||
-        orderItems.length === 0 ||
-        orderItems.some((item) => item.unitAmount === null)
+        !productId ||
+        !Number.isFinite(quantity) ||
+        !Number.isFinite(unitAmount)
     ) {
         console.log("[thrivecart-webhook] Ignoring paid event with incomplete mapping", {
             eventType,
             hasCustomerEmail: Boolean(customerEmail),
             hasExternalOrderId: Boolean(externalOrderId),
-            hasAmountTotal: amountTotal !== null,
+            hasAmountTotal: Number.isFinite(amountTotal),
             hasCurrency: Boolean(currency),
-            orderItemCount: orderItems.length,
-            hasAllUnitAmounts: orderItems.every((item) => item.unitAmount !== null),
+            hasProductId: Boolean(productId),
+            hasQuantity: Number.isFinite(quantity),
+            hasUnitAmount: Number.isFinite(unitAmount),
         })
 
         return Response.json({ received: true, ignored: true }, { status: 200 })
@@ -612,18 +609,16 @@ export async function POST(request: Request) {
 
         const { error: orderItemsError } = await supabaseAdmin
             .from("order_items")
-            .insert(
-                orderItems.map((item) => ({
-                    order_id: order.id,
-                    product_id: item.productId,
-                    product_name: item.productName,
-                    quantity: 1,
-                    unit_amount: item.unitAmount,
-                    item_status: "processing",
-                    delivery_text: null,
-                    published_url: null,
-                }))
-            )
+            .insert({
+                order_id: order.id,
+                product_id: productId,
+                product_name: productName,
+                quantity,
+                unit_amount: unitAmount,
+                item_status: "processing",
+                delivery_text: null,
+                published_url: null,
+            })
 
         if (orderItemsError) {
             console.error("[thrivecart-webhook] Failed to insert order items", {
@@ -654,7 +649,7 @@ export async function POST(request: Request) {
         console.log("[thrivecart-webhook] Order created", {
             externalOrderId,
             orderId: order.id,
-            itemCount: orderItems.length,
+            itemCount: 1,
         })
 
         return Response.json({ received: true }, { status: 200 })
