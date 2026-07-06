@@ -17,6 +17,12 @@ const PRODUCT_DATA = {
         delivery: "7 Days",
         priceId: "price_1ToiyORtNm75vIFInjjJeQxF",
     },
+
+    openPR: {
+        name: "OpenPR",
+        delivery: "2 Days",
+        priceId: "price_1Tq8csRvo61AD2cgaOaDm646",
+    },
 } as const
 
 type ProductId = keyof typeof PRODUCT_DATA
