@@ -484,6 +484,50 @@ export async function POST(request: Request) {
         return Response.json({ error: "Malformed payload" }, { status: 400 })
     }
 
+    const payloadObject = isJsonObject(payload) ? payload : {}
+    const customerPayload = payloadObject.customer
+    const orderPayload = payloadObject.order
+    const purchasePayload = payloadObject.purchase
+    const baseProductPayload = payloadObject.base_product
+
+    console.log(
+        "[thrivecart-webhook] Payload keys:",
+        Object.keys(payloadObject)
+    )
+    console.log(
+        "[thrivecart-webhook] Customer keys:",
+        isJsonObject(customerPayload) ? Object.keys(customerPayload) : null
+    )
+    console.log(
+        "[thrivecart-webhook] Order keys:",
+        isJsonObject(orderPayload) ? Object.keys(orderPayload) : null
+    )
+    console.log(
+        "[thrivecart-webhook] Purchase keys:",
+        isJsonObject(purchasePayload) ? Object.keys(purchasePayload) : null
+    )
+    console.log(
+        "[thrivecart-webhook] Base product keys:",
+        isJsonObject(baseProductPayload) ? Object.keys(baseProductPayload) : null
+    )
+    console.log(
+        "[thrivecart-webhook] Raw safe summary:",
+        redactSensitiveFields({
+            event: payloadObject.event,
+            customer_email: payloadObject.customer_email,
+            customer_firstname: payloadObject.customer_firstname,
+            customer_lastname: payloadObject.customer_lastname,
+            order_id: payloadObject.order_id,
+            invoice_id: payloadObject.invoice_id,
+            base_product: payloadObject.base_product,
+            order: payloadObject.order,
+            purchase: payloadObject.purchase,
+            currency: payloadObject.currency,
+            amount: payloadObject.amount,
+            total: payloadObject.total,
+        })
+    )
+
     const eventType = getEventType(payload)
     const customerEmail = getCustomerEmail(payload)
     const customerName = getCustomerName(payload)
