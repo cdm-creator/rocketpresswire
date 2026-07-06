@@ -12,6 +12,12 @@ type OrderItemStatus = {
     item_status: string | null
 }
 
+type OrderStatus = {
+    order_status: string | null
+}
+
+const SUCCESSFUL_ITEM_STATUSES = new Set(["published", "completed"])
+
 function unauthorizedResponse() {
     return Response.json({ error: "Unauthorized" }, { status: 401 })
 }
@@ -53,8 +59,9 @@ export async function GET(request: Request) {
                 {
                     success: true,
                     checkedAt,
-                    completedItems: 0,
+                    publishedItems: 0,
                     affectedOrders: 0,
+                    publishedOrders: 0,
                     completedOrders: 0,
                 },
                 { status: 200 }
@@ -62,27 +69,24 @@ export async function GET(request: Request) {
         }
 
         const dueItemIds = dueItems.map((item) => item.id)
-        const affectedOrderIds = [
-            ...new Set(dueItems.map((item) => item.order_id)),
-        ]
-
-        const { data: completedItems, error: completeItemsError } =
+        const { data: publishedItems, error: publishItemsError } =
             await supabaseAdmin
                 .from("order_items")
-                .update({ item_status: "completed" })
+                .update({ item_status: "published" })
                 .in("id", dueItemIds)
                 .eq("item_status", "processing")
                 .select("id, order_id")
                 .returns<DueOrderItem[]>()
 
-        if (completeItemsError) {
-            throw completeItemsError
+        if (publishItemsError) {
+            throw publishItemsError
         }
 
-        const updatedItems = completedItems ?? []
+        const updatedItems = publishedItems ?? []
         const updatedOrderIds = [
             ...new Set(updatedItems.map((item) => item.order_id)),
         ]
+        let publishedOrders = 0
         let completedOrders = 0
 
         for (const orderId of updatedOrderIds) {
@@ -97,18 +101,58 @@ export async function GET(request: Request) {
                 throw orderItemsError
             }
 
-            const hasProcessingItems = (orderItems ?? []).some(
-                (item) => item.item_status?.toLowerCase() === "processing"
+            const statuses = (orderItems ?? []).map((item) =>
+                item.item_status?.toLowerCase()
             )
 
-            if (hasProcessingItems) {
+            const hasProcessingItems = statuses.some(
+                (status) => status === "processing"
+            )
+            const hasSuccessfulItems = statuses.some((status) =>
+                status ? SUCCESSFUL_ITEM_STATUSES.has(status) : false
+            )
+            const allItemsSuccessful =
+                statuses.length > 0 &&
+                statuses.every((status) =>
+                    status ? SUCCESSFUL_ITEM_STATUSES.has(status) : false
+                )
+
+            if (!hasSuccessfulItems) {
                 continue
+            }
+
+            const nextOrderStatus = allItemsSuccessful
+                ? "completed"
+                : hasProcessingItems
+                  ? "published"
+                  : null
+
+            if (!nextOrderStatus) {
+                continue
+            }
+
+            if (nextOrderStatus === "published") {
+                const { data: order, error: orderStatusError } =
+                    await supabaseAdmin
+                        .from("orders")
+                        .select("order_status")
+                        .eq("id", orderId)
+                        .single()
+                        .returns<OrderStatus>()
+
+                if (orderStatusError) {
+                    throw orderStatusError
+                }
+
+                if (order.order_status?.toLowerCase() === "completed") {
+                    continue
+                }
             }
 
             const { error: orderUpdateError } = await supabaseAdmin
                 .from("orders")
                 .update({
-                    order_status: "completed",
+                    order_status: nextOrderStatus,
                     updated_at: checkedAt,
                 })
                 .eq("id", orderId)
@@ -117,15 +161,22 @@ export async function GET(request: Request) {
                 throw orderUpdateError
             }
 
-            completedOrders += 1
+            if (nextOrderStatus === "completed") {
+                completedOrders += 1
+            }
+
+            if (nextOrderStatus === "published") {
+                publishedOrders += 1
+            }
         }
 
         return Response.json(
             {
                 success: true,
                 checkedAt,
-                completedItems: updatedItems.length,
-                affectedOrders: affectedOrderIds.length,
+                publishedItems: updatedItems.length,
+                affectedOrders: updatedOrderIds.length,
+                publishedOrders,
                 completedOrders,
             },
             { status: 200 }
