@@ -154,6 +154,10 @@ export async function POST(request: Request) {
             )
         }
 
+        console.log("RAW selected_products:", session.metadata?.selected_products)
+        console.log("PARSED selectedProducts:", selectedProducts)
+        console.log("PRODUCT_DATA keys:", Object.keys(PRODUCT_DATA))
+
         const invalidProducts = selectedProducts.filter((id) => !isProductId(id))
 
         if (invalidProducts.length > 0) {
