@@ -35,6 +35,7 @@ type OrderItemRow = {
     order_id: string
     item_status: string
     published_url: string | null
+    expected_completion_at: string | null
 }
 
 type OrderItemStatusRow = {
@@ -49,6 +50,7 @@ type UpdatedOrderRow = {
 type RequestBody = {
     item_status?: unknown
     published_url?: unknown
+    expected_completion_at?: unknown
 }
 
 function jsonResponse(body: unknown, status: number) {
@@ -120,6 +122,25 @@ function normalizePublishedUrl(value: unknown) {
     const trimmedValue = value.trim()
 
     return trimmedValue === "" ? null : trimmedValue
+}
+
+function normalizeExpectedCompletionAt(value: unknown) {
+    if (value === null) {
+        return null
+    }
+
+    if (typeof value !== "string") {
+        return undefined
+    }
+
+    const trimmedValue = value.trim()
+    const date = new Date(trimmedValue)
+
+    if (!trimmedValue || Number.isNaN(date.getTime())) {
+        return undefined
+    }
+
+    return date.toISOString()
 }
 
 function deriveOrderStatus(items: OrderItemStatusRow[]) {
@@ -242,10 +263,24 @@ export async function PATCH(request: Request, context: RouteContext) {
             return badRequestResponse("Invalid body")
         }
 
+        const hasExpectedCompletionAt = Object.hasOwn(
+            body,
+            "expected_completion_at"
+        )
+        const expectedCompletionAt = hasExpectedCompletionAt
+            ? normalizeExpectedCompletionAt(body.expected_completion_at)
+            : undefined
+
+        if (hasExpectedCompletionAt && expectedCompletionAt === undefined) {
+            return badRequestResponse("Invalid expected completion date")
+        }
+
         const { data: currentItem, error: currentItemError } =
             await supabaseAdmin
                 .from("order_items")
-                .select("id, order_id, item_status, published_url")
+                .select(
+                    "id, order_id, item_status, published_url, expected_completion_at"
+                )
                 .eq("id", itemId)
                 .maybeSingle()
                 .returns<OrderItemRow | null>()
@@ -266,6 +301,7 @@ export async function PATCH(request: Request, context: RouteContext) {
         const itemUpdate: {
             item_status: string
             published_url?: string | null
+            expected_completion_at?: string | null
         } = {
             item_status: itemStatus,
         }
@@ -274,12 +310,18 @@ export async function PATCH(request: Request, context: RouteContext) {
             itemUpdate.published_url = publishedUrl
         }
 
+        if (hasExpectedCompletionAt) {
+            itemUpdate.expected_completion_at = expectedCompletionAt
+        }
+
         const { data: updatedItem, error: updateItemError } =
             await supabaseAdmin
                 .from("order_items")
                 .update(itemUpdate)
                 .eq("id", currentItem.id)
-                .select("id, order_id, item_status, published_url")
+                .select(
+                    "id, order_id, item_status, published_url, expected_completion_at"
+                )
                 .single()
                 .returns<OrderItemRow>()
 
@@ -339,6 +381,7 @@ export async function PATCH(request: Request, context: RouteContext) {
                     order_id: updatedItem.order_id,
                     item_status: updatedItem.item_status,
                     published_url: updatedItem.published_url,
+                    expected_completion_at: updatedItem.expected_completion_at,
                 },
                 order: {
                     id: updatedOrder.id,
