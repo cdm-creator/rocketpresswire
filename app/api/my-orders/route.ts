@@ -21,6 +21,7 @@ type OrderItemRow = {
     item_status: string
     delivery_text: string | null
     published_url: string | null
+    expected_completion_at: string | null
 }
 
 type OrderRow = {
@@ -147,7 +148,8 @@ export async function GET(request: Request) {
                     unit_amount,
                     item_status,
                     delivery_text,
-                    published_url
+                    published_url,
+                    expected_completion_at
                 )
             `
             )
