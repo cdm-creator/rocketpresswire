@@ -2,33 +2,19 @@ import type Stripe from "stripe"
 
 import { sendAdminNewOrderEmail } from "@/lib/admin-order-notification"
 import { sendCustomerOrderConfirmationEmail } from "@/lib/customer-order-confirmation"
-import { calculateExpectedCompletionAt } from "@/lib/order-items"
+import {
+    addExpectedDays,
+    getProductDeliveryBySlug,
+    type ProductSlug,
+} from "@/lib/product-delivery-config"
 import { supabaseAdmin } from "@/lib/supabase-admin"
 import { getStripe } from "@/lib/stripe"
 
 export const runtime = "nodejs"
 
-const PRODUCT_DATA = {
-    msn: {
-        name: "MSN",
-        delivery: "5 Days",
-        priceId: "price_1Tq8bFRvo61AD2cgV6by04aS",
-    },
+const STRIPE_PRODUCT_SLUGS = ["msn", "reuters", "openPR"] as const
 
-    reuters: {
-        name: "Reuters",
-        delivery: "7 Days",
-        priceId: "price_1Tq8cPRvo61AD2cgeWCTcRyd",
-    },
-
-    openPR: {
-        name: "OpenPR",
-        delivery: "2 Days",
-        priceId: "price_1Tq8csRvo61AD2cgaOaDm646",
-    },
-} as const
-
-type ProductId = keyof typeof PRODUCT_DATA
+type ProductId = (typeof STRIPE_PRODUCT_SLUGS)[number] & ProductSlug
 
 function generateOrderNumber() {
     const timestamp = new Date()
@@ -49,7 +35,7 @@ function parseSelectedProducts(value: string | null | undefined) {
 }
 
 function isProductId(productId: string): productId is ProductId {
-    return productId in PRODUCT_DATA
+    return STRIPE_PRODUCT_SLUGS.includes(productId as ProductId)
 }
 
 async function orderExists(sessionId: string) {
@@ -165,7 +151,7 @@ export async function POST(request: Request) {
 
         console.log("RAW selected_products:", session.metadata?.selected_products)
         console.log("PARSED selectedProducts:", selectedProducts)
-        console.log("PRODUCT_DATA keys:", Object.keys(PRODUCT_DATA))
+        console.log("PRODUCT_DATA keys:", STRIPE_PRODUCT_SLUGS)
 
         const invalidProducts = selectedProducts.filter((id) => !isProductId(id))
 
@@ -194,12 +180,20 @@ export async function POST(request: Request) {
 
         const priceResults = await Promise.all(
             validProducts.map(async (productId) => {
-                const product = PRODUCT_DATA[productId]
-                const price = await stripe.prices.retrieve(product.priceId)
+                const product = getProductDeliveryBySlug(productId)
+                const priceId = product?.stripePriceIds[0]
+
+                if (!product || !priceId) {
+                    throw new Error(
+                        `Missing Stripe delivery configuration for ${productId}`
+                    )
+                }
+
+                const price = await stripe.prices.retrieve(priceId)
 
                 if (price.unit_amount === null) {
                     throw new Error(
-                        `Stripe Price ${product.priceId} is missing unit_amount`
+                        `Stripe Price ${priceId} is missing unit_amount`
                     )
                 }
 
@@ -224,7 +218,7 @@ export async function POST(request: Request) {
                 payment_status: session.payment_status,
                 order_status: "processing",
             })
-            .select("id, order_number")
+            .select("id, order_number, created_at")
             .single()
 
         if (orderError) {
@@ -243,12 +237,15 @@ export async function POST(request: Request) {
         const orderItems = priceResults.map(({ productId, product, unitAmount }) => ({
             order_id: order.id,
             product_id: productId,
-            product_name: product.name,
+            product_name: product.canonicalName,
             quantity: 1,
             unit_amount: unitAmount,
             item_status: "processing",
-            delivery_text: product.delivery,
-            expected_completion_at: calculateExpectedCompletionAt(product.delivery),
+            delivery_text: product.deliveryText,
+            expected_completion_at: addExpectedDays(
+                order.created_at,
+                product.expectedDays
+            ),
             published_url: null,
         }))
 
@@ -292,7 +289,7 @@ export async function POST(request: Request) {
         })
 
         const emailProducts = priceResults.map(({ product, unitAmount }) => ({
-            name: product.name,
+            name: product.canonicalName,
             quantity: 1,
             amount: unitAmount,
         }))

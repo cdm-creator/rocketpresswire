@@ -1,6 +1,9 @@
 import { sendAdminNewOrderEmail } from "@/lib/admin-order-notification"
 import { sendCustomerOrderConfirmationEmail } from "@/lib/customer-order-confirmation"
-import { calculateExpectedCompletionAt } from "@/lib/order-items"
+import {
+    addExpectedDays,
+    resolveProductDelivery,
+} from "@/lib/product-delivery-config"
 import { supabaseAdmin } from "@/lib/supabase-admin"
 
 export const runtime = "nodejs"
@@ -13,23 +16,6 @@ type ThriveCartOrderItem = {
     quantity: number
     unitAmount: number | null
 }
-
-const PRODUCT_DELIVERY_DATA = {
-    msn: {
-        name: "MSN",
-        delivery: "5 Days",
-    },
-
-    reuters: {
-        name: "Reuters",
-        delivery: "7 Days",
-    },
-
-    openPR: {
-        name: "OpenPR",
-        delivery: "2 Days",
-    },
-} as const
 
 const SENSITIVE_KEY_PATTERN =
     /card|cvv|cvc|secret|token|password|authorization|signature|key|payment_method|billing_address/i
@@ -273,37 +259,6 @@ function toNumberValue(value: unknown) {
     const number = Number(value.replace(/[^0-9.-]/g, ""))
 
     return Number.isFinite(number) ? number : null
-}
-
-function normalizeProductLookupValue(value: string | null) {
-    return value?.toLowerCase().replace(/[^a-z0-9]/g, "") ?? ""
-}
-
-function resolveDeliveryText(productId: string, productName: string) {
-    const normalizedProductId = normalizeProductLookupValue(productId)
-    const normalizedProductName = normalizeProductLookupValue(productName)
-
-    for (const [productKey, product] of Object.entries(PRODUCT_DELIVERY_DATA)) {
-        const normalizedKey = normalizeProductLookupValue(productKey)
-        const normalizedName = normalizeProductLookupValue(product.name)
-
-        if (
-            normalizedProductId === normalizedKey ||
-            normalizedProductId === normalizedName ||
-            normalizedProductName === normalizedKey ||
-            normalizedProductName === normalizedName ||
-            normalizedProductName.includes(normalizedName)
-        ) {
-            return product.delivery
-        }
-    }
-
-    console.warn("[thrivecart-webhook] Missing delivery mapping for product", {
-        productId,
-        productName,
-    })
-
-    return null
 }
 
 function getEventType(payload: unknown) {
@@ -729,7 +684,7 @@ export async function POST(request: Request) {
                 payment_status: "paid",
                 order_status: "processing",
             })
-            .select("id, order_number")
+            .select("id, order_number, created_at")
             .single()
 
         if (orderError) {
@@ -745,10 +700,19 @@ export async function POST(request: Request) {
         }
 
         const orderItems = purchasedItems.map((item) => {
-            const deliveryText = resolveDeliveryText(
-                item.productId,
-                item.productName
-            )
+            const productDelivery = resolveProductDelivery({
+                productId: item.productId,
+                productName: item.productName,
+                externalId: item.productId,
+            })
+
+            if (!productDelivery) {
+                console.warn("UNMAPPED THRIVECART PRODUCT", {
+                    productId: item.productId,
+                    productName: item.productName,
+                    externalOrderId,
+                })
+            }
 
             return {
                 order_id: order.id,
@@ -757,8 +721,10 @@ export async function POST(request: Request) {
                 quantity: item.quantity,
                 unit_amount: item.unitAmount,
                 item_status: "processing",
-                delivery_text: deliveryText,
-                expected_completion_at: calculateExpectedCompletionAt(deliveryText),
+                delivery_text: productDelivery?.deliveryText ?? null,
+                expected_completion_at: productDelivery
+                    ? addExpectedDays(order.created_at, productDelivery.expectedDays)
+                    : null,
                 published_url: null,
             }
         })
