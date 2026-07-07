@@ -10,8 +10,26 @@ type JsonObject = Record<string, unknown>
 type ThriveCartOrderItem = {
     productId: string
     productName: string
+    quantity: number
     unitAmount: number | null
 }
+
+const PRODUCT_DELIVERY_DATA = {
+    msn: {
+        name: "MSN",
+        delivery: "5 Days",
+    },
+
+    reuters: {
+        name: "Reuters",
+        delivery: "7 Days",
+    },
+
+    openPR: {
+        name: "OpenPR",
+        delivery: "2 Days",
+    },
+} as const
 
 const SENSITIVE_KEY_PATTERN =
     /card|cvv|cvc|secret|token|password|authorization|signature|key|payment_method|billing_address/i
@@ -243,6 +261,51 @@ function toSmallestCurrencyUnit(value: unknown) {
     return normalizedValue.includes(".") ? Math.round(amount * 100) : amount
 }
 
+function toNumberValue(value: unknown) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+        return value
+    }
+
+    if (typeof value !== "string") {
+        return null
+    }
+
+    const number = Number(value.replace(/[^0-9.-]/g, ""))
+
+    return Number.isFinite(number) ? number : null
+}
+
+function normalizeProductLookupValue(value: string | null) {
+    return value?.toLowerCase().replace(/[^a-z0-9]/g, "") ?? ""
+}
+
+function resolveDeliveryText(productId: string, productName: string) {
+    const normalizedProductId = normalizeProductLookupValue(productId)
+    const normalizedProductName = normalizeProductLookupValue(productName)
+
+    for (const [productKey, product] of Object.entries(PRODUCT_DELIVERY_DATA)) {
+        const normalizedKey = normalizeProductLookupValue(productKey)
+        const normalizedName = normalizeProductLookupValue(product.name)
+
+        if (
+            normalizedProductId === normalizedKey ||
+            normalizedProductId === normalizedName ||
+            normalizedProductName === normalizedKey ||
+            normalizedProductName === normalizedName ||
+            normalizedProductName.includes(normalizedName)
+        ) {
+            return product.delivery
+        }
+    }
+
+    console.warn("[thrivecart-webhook] Missing delivery mapping for product", {
+        productId,
+        productName,
+    })
+
+    return null
+}
+
 function getEventType(payload: unknown) {
     return toStringValue(
         findFirstPathValue(payload, [
@@ -388,6 +451,46 @@ function getProductContainers(payload: unknown) {
     return [payload]
 }
 
+function extractFlatChargeItems(payload: JsonObject) {
+    const items: ThriveCartOrderItem[] = []
+
+    for (let index = 0; index < 50; index += 1) {
+        const productId = String(
+            payload[`order[charges][${index}][item_identifier]`] ||
+                payload[`order[charges][${index}][product_id]`] ||
+                ""
+        ).trim()
+        const productName =
+            String(
+                payload[`order[charges][${index}][name]`] ||
+                    payload[`order[charges][${index}][label]`] ||
+                    ""
+            ).trim() || productId
+        const quantity =
+            toNumberValue(payload[`order[charges][${index}][quantity]`]) ?? 1
+        const unitAmount =
+            toNumberValue(payload[`order[charges][${index}][unit_price]`]) ??
+            toNumberValue(payload[`order[charges][${index}][amount]`])
+
+        if (!productId && !productName) {
+            continue
+        }
+
+        if (!productId || !productName) {
+            continue
+        }
+
+        items.push({
+            productId,
+            productName,
+            quantity,
+            unitAmount,
+        })
+    }
+
+    return items
+}
+
 function extractOrderItems(payload: unknown, fallbackAmount: number | null) {
     const containers = getProductContainers(payload)
     const items: ThriveCartOrderItem[] = []
@@ -438,11 +541,20 @@ function extractOrderItems(payload: unknown, fallbackAmount: number | null) {
                             "price",
                         ])
                 ) ?? fallbackAmount
+            const quantity =
+                toNumberValue(
+                    findFirstPathValue(productValue, [
+                        ["quantity"],
+                        ["qty"],
+                        ["product", "quantity"],
+                    ]) ?? findFirstDeepValue(productValue, ["quantity", "qty"])
+                ) ?? 1
 
             if (productId && productName) {
                 items.push({
                     productId,
                     productName,
+                    quantity,
                     unitAmount,
                 })
             }
@@ -526,6 +638,21 @@ export async function POST(request: Request) {
             payloadObject["order[charges][0][amount]"] ||
             0
     )
+    const extractedItems = extractFlatChargeItems(payloadObject)
+    const nestedItems = extractOrderItems(payload, unitAmount)
+    const purchasedItems =
+        extractedItems.length > 0
+            ? extractedItems
+            : nestedItems.length > 0
+              ? nestedItems
+            : [
+                  {
+                      productId,
+                      productName,
+                      quantity,
+                      unitAmount,
+                  },
+              ]
 
     console.log("[thrivecart-webhook] Received event", {
         method: request.method,
@@ -539,6 +666,7 @@ export async function POST(request: Request) {
         productName,
         quantity,
         unitAmount,
+        itemCount: purchasedItems.length,
     })
 
     if (!isSuccessfulPurchaseEvent(payload)) {
@@ -555,9 +683,15 @@ export async function POST(request: Request) {
         !externalOrderId ||
         !Number.isFinite(amountTotal) ||
         !currency ||
-        !productId ||
-        !Number.isFinite(quantity) ||
-        !Number.isFinite(unitAmount)
+        purchasedItems.length === 0 ||
+        purchasedItems.some(
+            (item) =>
+                !item.productId ||
+                !item.productName ||
+                !Number.isFinite(item.quantity) ||
+                item.unitAmount === null ||
+                !Number.isFinite(item.unitAmount)
+        )
     ) {
         console.log("[thrivecart-webhook] Ignoring paid event with incomplete mapping", {
             eventType,
@@ -565,9 +699,7 @@ export async function POST(request: Request) {
             hasExternalOrderId: Boolean(externalOrderId),
             hasAmountTotal: Number.isFinite(amountTotal),
             hasCurrency: Boolean(currency),
-            hasProductId: Boolean(productId),
-            hasQuantity: Number.isFinite(quantity),
-            hasUnitAmount: Number.isFinite(unitAmount),
+            hasItems: purchasedItems.length > 0,
         })
 
         return Response.json({ received: true, ignored: true }, { status: 200 })
@@ -612,21 +744,28 @@ export async function POST(request: Request) {
             throw orderError
         }
 
-        const deliveryText = null
+        const orderItems = purchasedItems.map((item) => {
+            const deliveryText = resolveDeliveryText(
+                item.productId,
+                item.productName
+            )
 
-        const { error: orderItemsError } = await supabaseAdmin
-            .from("order_items")
-            .insert({
+            return {
                 order_id: order.id,
-                product_id: productId,
-                product_name: productName,
-                quantity,
-                unit_amount: unitAmount,
+                product_id: item.productId,
+                product_name: item.productName,
+                quantity: item.quantity,
+                unit_amount: item.unitAmount,
                 item_status: "processing",
                 delivery_text: deliveryText,
                 expected_completion_at: calculateExpectedCompletionAt(deliveryText),
                 published_url: null,
-            })
+            }
+        })
+
+        const { error: orderItemsError } = await supabaseAdmin
+            .from("order_items")
+            .insert(orderItems)
 
         if (orderItemsError) {
             console.error("[thrivecart-webhook] Failed to insert order items", {
@@ -657,16 +796,14 @@ export async function POST(request: Request) {
         console.log("[thrivecart-webhook] Order created", {
             externalOrderId,
             orderId: order.id,
-            itemCount: 1,
+            itemCount: orderItems.length,
         })
 
-        const emailProducts = [
-            {
-                name: productName,
-                quantity,
-                amount: unitAmount,
-            },
-        ]
+        const emailProducts = purchasedItems.map((item) => ({
+            name: item.productName,
+            quantity: item.quantity,
+            amount: item.unitAmount ?? undefined,
+        }))
 
         try {
             await sendAdminNewOrderEmail({
