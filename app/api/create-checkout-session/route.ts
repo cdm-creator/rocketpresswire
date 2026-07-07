@@ -69,8 +69,8 @@ export async function POST(request: Request) {
         const session = await stripe.checkout.sessions.create({
             mode: "payment",
             line_items,
-            success_url: `${process.env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${process.env.FRONTEND_URL}/cancel`,
+            success_url: "https://rocketpresswire.framer.website/thank-you",
+            cancel_url: "https://rocketpresswire.framer.website/single-distribution",
             metadata: {
                 selected_products: uniqueItems.join(","),
             },
