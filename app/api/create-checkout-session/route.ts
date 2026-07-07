@@ -69,6 +69,9 @@ export async function POST(request: Request) {
         const session = await stripe.checkout.sessions.create({
             mode: "payment",
             line_items,
+            invoice_creation: {
+              enabled: true,
+     },
             success_url: "https://rocketpresswire.framer.website/thank-you",
             cancel_url: "https://rocketpresswire.framer.website/single-distribution",
             metadata: {
