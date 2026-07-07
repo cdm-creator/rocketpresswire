@@ -1,3 +1,4 @@
+import { sendAdminNewOrderEmail } from "@/lib/admin-order-notification"
 import { calculateExpectedCompletionAt } from "@/lib/order-items"
 import { supabaseAdmin } from "@/lib/supabase-admin"
 
@@ -580,10 +581,12 @@ export async function POST(request: Request) {
             return Response.json({ received: true }, { status: 200 })
         }
 
+        const orderNumber = generateOrderNumber()
+
         const { data: order, error: orderError } = await supabaseAdmin
             .from("orders")
             .insert({
-                order_number: generateOrderNumber(),
+                order_number: orderNumber,
                 customer_email: customerEmail,
                 customer_name: customerName,
                 source: "thrivecart",
@@ -593,7 +596,7 @@ export async function POST(request: Request) {
                 payment_status: "paid",
                 order_status: "processing",
             })
-            .select("id")
+            .select("id, order_number")
             .single()
 
         if (orderError) {
@@ -655,6 +658,26 @@ export async function POST(request: Request) {
             orderId: order.id,
             itemCount: 1,
         })
+
+        try {
+            await sendAdminNewOrderEmail({
+                orderNumber: order.order_number,
+                customerName,
+                customerEmail,
+                source: "thrivecart",
+                products: [
+                    {
+                        name: productName,
+                        quantity,
+                        amount: unitAmount,
+                    },
+                ],
+                totalAmount: amountTotal,
+                currency,
+            })
+        } catch (emailError) {
+            console.error("Admin notification email failed:", emailError)
+        }
 
         return Response.json({ received: true }, { status: 200 })
     } catch (error) {

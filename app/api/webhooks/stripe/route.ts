@@ -1,5 +1,6 @@
 import type Stripe from "stripe"
 
+import { sendAdminNewOrderEmail } from "@/lib/admin-order-notification"
 import { calculateExpectedCompletionAt } from "@/lib/order-items"
 import { supabaseAdmin } from "@/lib/supabase-admin"
 import { getStripe } from "@/lib/stripe"
@@ -181,6 +182,7 @@ export async function POST(request: Request) {
         }
 
         const validProducts = selectedProducts as ProductId[]
+        const orderNumber = generateOrderNumber()
 
         console.log("[stripe-webhook] Processing completed checkout session", {
             eventId: event.id,
@@ -211,7 +213,7 @@ export async function POST(request: Request) {
         const { data: order, error: orderError } = await supabaseAdmin
             .from("orders")
             .insert({
-                order_number: generateOrderNumber(),
+                order_number: orderNumber,
                 customer_email: customerEmail,
                 customer_name: customerName,
                 source: "stripe",
@@ -221,7 +223,7 @@ export async function POST(request: Request) {
                 payment_status: session.payment_status,
                 order_status: "processing",
             })
-            .select("id")
+            .select("id, order_number")
             .single()
 
         if (orderError) {
@@ -287,6 +289,29 @@ export async function POST(request: Request) {
             orderId: order.id,
             itemCount: orderItems.length,
         })
+
+        try {
+            await sendAdminNewOrderEmail({
+                orderNumber: order.order_number,
+                customerName,
+                customerEmail,
+                source: "stripe",
+                products: priceResults.map(({ product, unitAmount }) => ({
+                    name: product.name,
+                    quantity: 1,
+                    amount: unitAmount,
+                })),
+                totalAmount:
+                    session.amount_total ??
+                    priceResults.reduce(
+                        (total, { unitAmount }) => total + unitAmount,
+                        0
+                    ),
+                currency: session.currency ?? "usd",
+            })
+        } catch (emailError) {
+            console.error("Admin notification email failed:", emailError)
+        }
 
         return Response.json({ received: true }, { status: 200 })
     } catch (error) {
