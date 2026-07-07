@@ -1,6 +1,7 @@
 import type Stripe from "stripe"
 
 import { sendAdminNewOrderEmail } from "@/lib/admin-order-notification"
+import { sendCustomerOrderConfirmationEmail } from "@/lib/customer-order-confirmation"
 import { calculateExpectedCompletionAt } from "@/lib/order-items"
 import { supabaseAdmin } from "@/lib/supabase-admin"
 import { getStripe } from "@/lib/stripe"
@@ -290,27 +291,42 @@ export async function POST(request: Request) {
             itemCount: orderItems.length,
         })
 
+        const emailProducts = priceResults.map(({ product, unitAmount }) => ({
+            name: product.name,
+            quantity: 1,
+            amount: unitAmount,
+        }))
+        const emailTotalAmount =
+            session.amount_total ??
+            priceResults.reduce((total, { unitAmount }) => total + unitAmount, 0)
+        const emailCurrency = session.currency ?? "usd"
+
         try {
             await sendAdminNewOrderEmail({
                 orderNumber: order.order_number,
                 customerName,
                 customerEmail,
                 source: "stripe",
-                products: priceResults.map(({ product, unitAmount }) => ({
-                    name: product.name,
-                    quantity: 1,
-                    amount: unitAmount,
-                })),
-                totalAmount:
-                    session.amount_total ??
-                    priceResults.reduce(
-                        (total, { unitAmount }) => total + unitAmount,
-                        0
-                    ),
-                currency: session.currency ?? "usd",
+                products: emailProducts,
+                totalAmount: emailTotalAmount,
+                currency: emailCurrency,
             })
         } catch (emailError) {
             console.error("Admin notification email failed:", emailError)
+        }
+
+        try {
+            await sendCustomerOrderConfirmationEmail({
+                orderNumber: order.order_number,
+                customerName,
+                customerEmail,
+                products: emailProducts,
+                totalAmount: emailTotalAmount,
+                currency: emailCurrency,
+                source: "stripe",
+            })
+        } catch (emailError) {
+            console.error("Customer confirmation email failed:", emailError)
         }
 
         return Response.json({ received: true }, { status: 200 })

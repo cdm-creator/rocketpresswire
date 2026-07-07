@@ -1,4 +1,5 @@
 import { sendAdminNewOrderEmail } from "@/lib/admin-order-notification"
+import { sendCustomerOrderConfirmationEmail } from "@/lib/customer-order-confirmation"
 import { calculateExpectedCompletionAt } from "@/lib/order-items"
 import { supabaseAdmin } from "@/lib/supabase-admin"
 
@@ -659,24 +660,40 @@ export async function POST(request: Request) {
             itemCount: 1,
         })
 
+        const emailProducts = [
+            {
+                name: productName,
+                quantity,
+                amount: unitAmount,
+            },
+        ]
+
         try {
             await sendAdminNewOrderEmail({
                 orderNumber: order.order_number,
                 customerName,
                 customerEmail,
                 source: "thrivecart",
-                products: [
-                    {
-                        name: productName,
-                        quantity,
-                        amount: unitAmount,
-                    },
-                ],
+                products: emailProducts,
                 totalAmount: amountTotal,
                 currency,
             })
         } catch (emailError) {
             console.error("Admin notification email failed:", emailError)
+        }
+
+        try {
+            await sendCustomerOrderConfirmationEmail({
+                orderNumber: order.order_number,
+                customerName,
+                customerEmail,
+                products: emailProducts,
+                totalAmount: amountTotal,
+                currency,
+                source: "thrivecart",
+            })
+        } catch (emailError) {
+            console.error("Customer confirmation email failed:", emailError)
         }
 
         return Response.json({ received: true }, { status: 200 })
