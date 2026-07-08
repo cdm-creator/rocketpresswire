@@ -1,4 +1,5 @@
 import { google } from "googleapis"
+import MailComposer from "nodemailer/lib/mail-composer"
 
 type CustomerOrderProduct = {
     name: string
@@ -180,7 +181,7 @@ function buildHtmlEmail(
 
 function buildHtmlRow(label: string, value: string) {
     return `<tr>
-      <td style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.08);">
+      <td style="padding:10px 0;border-bottom:1px solid #2b2440;">
         <div style="color:#aaa4bd;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">${escapeHtml(label)}</div>
         <div style="margin-top:5px;color:#ffffff;font-size:16px;line-height:1.45;">${escapeHtml(value)}</div>
       </td>
@@ -189,36 +190,22 @@ function buildHtmlRow(label: string, value: string) {
 
 function buildStatusRow() {
     return `<tr>
-      <td style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.08);">
+      <td style="padding:10px 0;border-bottom:1px solid #2b2440;">
         <div style="color:#aaa4bd;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Current Status</div>
-        <div style="margin-top:8px;"><span style="display:inline-block;background:rgba(104,229,166,0.16);color:#68e5a6;font-size:13px;font-weight:700;padding:6px 10px;border-radius:999px;">Processing</span></div>
+        <div style="margin-top:8px;"><span style="display:inline-block;background:#203c38;color:#68e5a6;font-size:13px;font-weight:700;padding:6px 10px;border-radius:999px;">Processing</span></div>
       </td>
     </tr>`
 }
 
-function encodeMimeHeader(value: string) {
-    if (/^[\x20-\x7E]*$/.test(value)) {
-        return value
-    }
-
-    return `=?UTF-8?B?${Buffer.from(value, "utf8").toString("base64")}?=`
-}
-
-function createMimeBoundary() {
-    return `rocket_press_wire_${Date.now()}_${Math.random()
-        .toString(36)
-        .slice(2)}`
-}
-
-function encodeBase64Url(value: string) {
-    return Buffer.from(value, "utf8")
+function encodeBase64Url(rawMessage: Buffer) {
+    return rawMessage
         .toString("base64")
         .replace(/\+/g, "-")
         .replace(/\//g, "_")
         .replace(/=+$/g, "")
 }
 
-function buildMimeEmail({
+async function buildRawEmail({
     fromEmail,
     toEmail,
     subject,
@@ -231,35 +218,19 @@ function buildMimeEmail({
     text: string
     html: string
 }) {
-    const boundary = createMimeBoundary()
-    const headers = [
-        `From: Rocket Press Wire <${fromEmail}>`,
-        `To: ${toEmail}`,
-        `Subject: ${encodeMimeHeader(subject)}`,
-        "MIME-Version: 1.0",
-        `Content-Type: multipart/alternative; boundary="${boundary}"`,
-    ]
-
-    const message = [
-        ...headers,
-        "",
-        `--${boundary}`,
-        'Content-Type: text/plain; charset="UTF-8"',
-        "Content-Transfer-Encoding: 8bit",
-        "",
+    return new MailComposer({
+        from: {
+            name: "Rocket Press Wire",
+            address: fromEmail,
+        },
+        to: toEmail,
+        replyTo: fromEmail,
+        subject,
         text,
-        "",
-        `--${boundary}`,
-        'Content-Type: text/html; charset="UTF-8"',
-        "Content-Transfer-Encoding: 8bit",
-        "",
         html,
-        "",
-        `--${boundary}--`,
-        "",
-    ].join("\r\n")
-
-    return encodeBase64Url(message)
+    })
+        .compile()
+        .build()
 }
 
 function getGmailClient() {
@@ -298,18 +269,26 @@ export async function sendCustomerOrderConfirmationEmail(
 
     try {
         const subject = `Your Rocket Press Wire Order Is Confirmed - ${data.orderNumber}`
-        const raw = buildMimeEmail({
+        console.log("CUSTOMER CONFIRMATION SEND ATTEMPT", {
+            orderNumber: data.orderNumber,
+            customerEmail,
+            provider: "gmail-api",
+            mimeBuilder: "mailcomposer",
+        })
+
+        const rawMessage = await buildRawEmail({
             fromEmail: senderEmail,
             toEmail: customerEmail,
             subject,
             text: buildTextEmail(data, portalUrl),
             html: buildHtmlEmail(data, portalUrl),
         })
+        const encodedMessage = encodeBase64Url(rawMessage)
 
         const result = await getGmailClient().users.messages.send({
             userId: "me",
             requestBody: {
-                raw,
+                raw: encodedMessage,
             },
         })
 
