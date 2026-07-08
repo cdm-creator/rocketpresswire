@@ -1,5 +1,4 @@
-import nodemailer from "nodemailer"
-import type SMTPTransport from "nodemailer/lib/smtp-transport"
+import { google } from "googleapis"
 
 type CustomerOrderProduct = {
     name: string
@@ -17,9 +16,6 @@ type CustomerOrderConfirmationEmailData = {
     source?: string
 }
 
-let transporter: nodemailer.Transporter<SMTPTransport.SentMessageInfo> | null =
-    null
-
 function requireEnv(name: string) {
     const value = process.env[name]?.trim()
 
@@ -30,27 +26,6 @@ function requireEnv(name: string) {
     }
 
     return value
-}
-
-function getTransporter() {
-    if (transporter) {
-        return transporter
-    }
-
-    const smtpUser = requireEnv("SMTP_USER")
-    const smtpAppPassword = requireEnv("SMTP_APP_PASSWORD")
-
-    transporter = nodemailer.createTransport({
-        host: "smtp.gmail.com",
-        port: 465,
-        secure: true,
-        auth: {
-            user: smtpUser,
-            pass: smtpAppPassword,
-        },
-    })
-
-    return transporter
 }
 
 function escapeHtml(value: string) {
@@ -221,10 +196,93 @@ function buildStatusRow() {
     </tr>`
 }
 
+function encodeMimeHeader(value: string) {
+    if (/^[\x20-\x7E]*$/.test(value)) {
+        return value
+    }
+
+    return `=?UTF-8?B?${Buffer.from(value, "utf8").toString("base64")}?=`
+}
+
+function createMimeBoundary() {
+    return `rocket_press_wire_${Date.now()}_${Math.random()
+        .toString(36)
+        .slice(2)}`
+}
+
+function encodeBase64Url(value: string) {
+    return Buffer.from(value, "utf8")
+        .toString("base64")
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/g, "")
+}
+
+function buildMimeEmail({
+    fromEmail,
+    toEmail,
+    subject,
+    text,
+    html,
+}: {
+    fromEmail: string
+    toEmail: string
+    subject: string
+    text: string
+    html: string
+}) {
+    const boundary = createMimeBoundary()
+    const headers = [
+        `From: Rocket Press Wire <${fromEmail}>`,
+        `To: ${toEmail}`,
+        `Subject: ${encodeMimeHeader(subject)}`,
+        "MIME-Version: 1.0",
+        `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    ]
+
+    const message = [
+        ...headers,
+        "",
+        `--${boundary}`,
+        'Content-Type: text/plain; charset="UTF-8"',
+        "Content-Transfer-Encoding: 8bit",
+        "",
+        text,
+        "",
+        `--${boundary}`,
+        'Content-Type: text/html; charset="UTF-8"',
+        "Content-Transfer-Encoding: 8bit",
+        "",
+        html,
+        "",
+        `--${boundary}--`,
+        "",
+    ].join("\r\n")
+
+    return encodeBase64Url(message)
+}
+
+function getGmailClient() {
+    const clientId = requireEnv("GOOGLE_CLIENT_ID")
+    const clientSecret = requireEnv("GOOGLE_CLIENT_SECRET")
+    const refreshToken = requireEnv("GOOGLE_REFRESH_TOKEN")
+
+    const oauth2Client = new google.auth.OAuth2(clientId, clientSecret)
+
+    oauth2Client.setCredentials({
+        refresh_token: refreshToken,
+    })
+
+    return google.gmail({
+        version: "v1",
+        auth: oauth2Client,
+    })
+}
+
 export async function sendCustomerOrderConfirmationEmail(
     data: CustomerOrderConfirmationEmailData
 ) {
-    const smtpUser = requireEnv("SMTP_USER")
+    const senderEmail = requireEnv("GMAIL_SENDER_EMAIL")
 
     const portalUrl =
         process.env.SITE_PORTAL_URL?.trim() ||
@@ -239,66 +297,38 @@ export async function sendCustomerOrderConfirmationEmail(
     }
 
     try {
-        const info = await getTransporter().sendMail({
-            from: {
-                name: "Rocket Press Wire",
-                address: smtpUser,
-            },
-
-            replyTo: smtpUser,
-
-            to: customerEmail,
-
-            subject: `Your Rocket Press Wire Order Is Confirmed - ${data.orderNumber}`,
-
+        const subject = `Your Rocket Press Wire Order Is Confirmed - ${data.orderNumber}`
+        const raw = buildMimeEmail({
+            fromEmail: senderEmail,
+            toEmail: customerEmail,
+            subject,
             text: buildTextEmail(data, portalUrl),
-
             html: buildHtmlEmail(data, portalUrl),
+        })
 
-            envelope: {
-                from: smtpUser,
-                to: customerEmail,
+        const result = await getGmailClient().users.messages.send({
+            userId: "me",
+            requestBody: {
+                raw,
             },
         })
 
-        console.log("CUSTOMER EMAIL SEND RESULT", {
+        console.log("CUSTOMER CONFIRMATION EMAIL SENT", {
             orderNumber: data.orderNumber,
             customerEmail,
-            source: data.source || "unknown",
-            messageId: info.messageId,
-            accepted: info.accepted,
-            rejected: info.rejected,
-            pending: info.pending,
-            response: info.response,
+            provider: "gmail-api",
+            messageId: result.data.id,
         })
-
-        if (info.rejected && info.rejected.length > 0) {
-            console.error("CUSTOMER EMAIL REJECTED", {
-                orderNumber: data.orderNumber,
-                customerEmail,
-                rejected: info.rejected,
-                response: info.response,
-            })
-
-            throw new Error(
-                `[customer-order-confirmation] Email rejected for ${customerEmail}`
-            )
-        }
-
-        console.log(
-            `[customer-order-confirmation] Email accepted for delivery: ${customerEmail}`
-        )
 
         return {
             success: true,
-            messageId: info.messageId,
-            accepted: info.accepted,
-            rejected: info.rejected,
+            messageId: result.data.id,
         }
     } catch (error) {
-        console.error("CUSTOMER EMAIL SEND FAILED", {
+        console.error("CUSTOMER CONFIRMATION EMAIL FAILED", {
             orderNumber: data.orderNumber,
             customerEmail,
+            provider: "gmail-api",
             error:
                 error instanceof Error
                     ? error.message
