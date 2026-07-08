@@ -225,15 +225,86 @@ export async function sendCustomerOrderConfirmationEmail(
     data: CustomerOrderConfirmationEmailData
 ) {
     const smtpUser = requireEnv("SMTP_USER")
+
     const portalUrl =
         process.env.SITE_PORTAL_URL?.trim() ||
         "https://rocketpresswire.framer.website/portal"
 
-    await getTransporter().sendMail({
-        from: `Rocket Press Wire <${smtpUser}>`,
-        to: data.customerEmail,
-        subject: `Your Rocket Press Wire Order Is Confirmed - ${data.orderNumber}`,
-        text: buildTextEmail(data, portalUrl),
-        html: buildHtmlEmail(data, portalUrl),
-    })
+    const customerEmail = data.customerEmail.trim().toLowerCase()
+
+    if (!customerEmail) {
+        throw new Error(
+            "[customer-order-confirmation] Customer email is missing."
+        )
+    }
+
+    try {
+        const info = await getTransporter().sendMail({
+            from: {
+                name: "Rocket Press Wire",
+                address: smtpUser,
+            },
+
+            replyTo: smtpUser,
+
+            to: customerEmail,
+
+            subject: `Your Rocket Press Wire Order Is Confirmed - ${data.orderNumber}`,
+
+            text: buildTextEmail(data, portalUrl),
+
+            html: buildHtmlEmail(data, portalUrl),
+
+            envelope: {
+                from: smtpUser,
+                to: customerEmail,
+            },
+        })
+
+        console.log("CUSTOMER EMAIL SEND RESULT", {
+            orderNumber: data.orderNumber,
+            customerEmail,
+            source: data.source || "unknown",
+            messageId: info.messageId,
+            accepted: info.accepted,
+            rejected: info.rejected,
+            pending: info.pending,
+            response: info.response,
+        })
+
+        if (info.rejected && info.rejected.length > 0) {
+            console.error("CUSTOMER EMAIL REJECTED", {
+                orderNumber: data.orderNumber,
+                customerEmail,
+                rejected: info.rejected,
+                response: info.response,
+            })
+
+            throw new Error(
+                `[customer-order-confirmation] Email rejected for ${customerEmail}`
+            )
+        }
+
+        console.log(
+            `[customer-order-confirmation] Email accepted for delivery: ${customerEmail}`
+        )
+
+        return {
+            success: true,
+            messageId: info.messageId,
+            accepted: info.accepted,
+            rejected: info.rejected,
+        }
+    } catch (error) {
+        console.error("CUSTOMER EMAIL SEND FAILED", {
+            orderNumber: data.orderNumber,
+            customerEmail,
+            error:
+                error instanceof Error
+                    ? error.message
+                    : String(error),
+        })
+
+        throw error
+    }
 }
