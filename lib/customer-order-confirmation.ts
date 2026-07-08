@@ -1,5 +1,5 @@
-import { google } from "googleapis"
-import MailComposer from "nodemailer/lib/mail-composer"
+import nodemailer from "nodemailer"
+import type SMTPTransport from "nodemailer/lib/smtp-transport"
 
 type CustomerOrderProduct = {
     name: string
@@ -17,9 +17,8 @@ type CustomerOrderConfirmationEmailData = {
     source?: string
 }
 
-type CustomerConfirmationEmailMode =
-    | "microsoft-plain-text"
-    | "standard-html"
+let transporter: nodemailer.Transporter<SMTPTransport.SentMessageInfo> | null =
+    null
 
 function requireEnv(name: string) {
     const value = process.env[name]?.trim()
@@ -53,24 +52,10 @@ function formatProduct(product: CustomerOrderProduct) {
     return `${product.name} x${product.quantity ?? 1}`
 }
 
-function isMicrosoftConsumerEmail(email: string) {
-    const domain = email.trim().toLowerCase().split("@")[1]
-
-    return ["outlook.com", "hotmail.com", "live.com", "msn.com"].includes(
-        domain
-    )
-}
-
 function getGreeting(customerName: string | null | undefined) {
     const name = customerName?.trim()
 
     return name ? `Hi ${name},` : "Hello,"
-}
-
-function getPlainCustomerGreeting(customerName: string | null | undefined) {
-    const name = customerName?.trim()
-
-    return name ? `Hello ${name},` : "Hello,"
 }
 
 function buildTextEmail(
@@ -115,35 +100,6 @@ function buildTextEmail(
         "",
         "Thank you for your order.",
         "",
-        "Rocket Press Wire Team",
-    ].join("\n")
-}
-
-function buildMicrosoftPlainTextEmail(data: CustomerOrderConfirmationEmailData) {
-    const products = data.products.map((product) => `- ${formatProduct(product)}`)
-
-    return [
-        getPlainCustomerGreeting(data.customerName),
-        "",
-        "Thank you for your order with Rocket Press Wire.",
-        "",
-        "Your order has been received successfully and is now being processed.",
-        "",
-        "Order Number:",
-        data.orderNumber,
-        "",
-        "Products:",
-        ...(products.length > 0 ? products : ["- No products listed"]),
-        "",
-        "Total Paid:",
-        formatCurrency(data.totalAmount, data.currency),
-        "",
-        "Current Status:",
-        "Processing",
-        "",
-        "You will receive updates as your order progresses.",
-        "",
-        "Thank you,",
         "Rocket Press Wire Team",
     ].join("\n")
 }
@@ -244,63 +200,31 @@ function buildStatusRow() {
     </tr>`
 }
 
-function encodeBase64Url(rawMessage: Buffer) {
-    return rawMessage
-        .toString("base64")
-        .replace(/\+/g, "-")
-        .replace(/\//g, "_")
-        .replace(/=+$/g, "")
-}
+function getTransporter() {
+    if (transporter) {
+        return transporter
+    }
 
-async function buildRawEmail({
-    fromEmail,
-    toEmail,
-    subject,
-    text,
-    html,
-}: {
-    fromEmail: string
-    toEmail: string
-    subject: string
-    text: string
-    html?: string
-}) {
-    return new MailComposer({
-        from: {
-            name: "Rocket Press Wire",
-            address: fromEmail,
+    const smtpUser = requireEnv("SMTP_USER")
+    const smtpAppPassword = requireEnv("SMTP_APP_PASSWORD")
+
+    transporter = nodemailer.createTransport({
+        host: "smtp.gmail.com",
+        port: 465,
+        secure: true,
+        auth: {
+            user: smtpUser,
+            pass: smtpAppPassword,
         },
-        to: toEmail,
-        replyTo: fromEmail,
-        subject,
-        text,
-        ...(html ? { html } : {}),
-    })
-        .compile()
-        .build()
-}
-
-function getGmailClient() {
-    const clientId = requireEnv("GOOGLE_CLIENT_ID")
-    const clientSecret = requireEnv("GOOGLE_CLIENT_SECRET")
-    const refreshToken = requireEnv("GOOGLE_REFRESH_TOKEN")
-
-    const oauth2Client = new google.auth.OAuth2(clientId, clientSecret)
-
-    oauth2Client.setCredentials({
-        refresh_token: refreshToken,
     })
 
-    return google.gmail({
-        version: "v1",
-        auth: oauth2Client,
-    })
+    return transporter
 }
 
 export async function sendCustomerOrderConfirmationEmail(
     data: CustomerOrderConfirmationEmailData
 ) {
-    const senderEmail = requireEnv("GMAIL_SENDER_EMAIL")
+    const smtpUser = requireEnv("SMTP_USER")
 
     const portalUrl =
         process.env.SITE_PORTAL_URL?.trim() ||
@@ -315,63 +239,36 @@ export async function sendCustomerOrderConfirmationEmail(
     }
 
     try {
-        const emailMode: CustomerConfirmationEmailMode =
-            isMicrosoftConsumerEmail(customerEmail)
-                ? "microsoft-plain-text"
-                : "standard-html"
-        const subject =
-            emailMode === "microsoft-plain-text"
-                ? `Order Confirmed - ${data.orderNumber}`
-                : `Your Rocket Press Wire Order Is Confirmed - ${data.orderNumber}`
-        const text =
-            emailMode === "microsoft-plain-text"
-                ? buildMicrosoftPlainTextEmail(data)
-                : buildTextEmail(data, portalUrl)
-        const html =
-            emailMode === "microsoft-plain-text"
-                ? undefined
-                : buildHtmlEmail(data, portalUrl)
-
-        console.log("CUSTOMER CONFIRMATION SEND ATTEMPT", {
-            orderNumber: data.orderNumber,
-            customerEmail,
-            provider: "gmail-api",
-            emailMode,
-        })
-
-        const rawMessage = await buildRawEmail({
-            fromEmail: senderEmail,
-            toEmail: customerEmail,
-            subject,
-            text,
-            html,
-        })
-        const encodedMessage = encodeBase64Url(rawMessage)
-
-        const result = await getGmailClient().users.messages.send({
-            userId: "me",
-            requestBody: {
-                raw: encodedMessage,
+        const info = await getTransporter().sendMail({
+            from: {
+                name: "Rocket Press Wire",
+                address: smtpUser,
             },
+            replyTo: smtpUser,
+            to: customerEmail,
+            subject: `Your Rocket Press Wire Order Is Confirmed - ${data.orderNumber}`,
+            text: buildTextEmail(data, portalUrl),
+            html: buildHtmlEmail(data, portalUrl),
         })
 
         console.log("CUSTOMER CONFIRMATION EMAIL SENT", {
             orderNumber: data.orderNumber,
             customerEmail,
-            provider: "gmail-api",
-            emailMode,
-            messageId: result.data.id,
+            messageId: info.messageId,
+            accepted: info.accepted,
+            rejected: info.rejected,
         })
 
         return {
             success: true,
-            messageId: result.data.id,
+            messageId: info.messageId,
+            accepted: info.accepted,
+            rejected: info.rejected,
         }
     } catch (error) {
         console.error("CUSTOMER CONFIRMATION EMAIL FAILED", {
             orderNumber: data.orderNumber,
             customerEmail,
-            provider: "gmail-api",
             error:
                 error instanceof Error
                     ? error.message
