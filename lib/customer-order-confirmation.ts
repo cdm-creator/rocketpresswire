@@ -17,6 +17,10 @@ type CustomerOrderConfirmationEmailData = {
     source?: string
 }
 
+type CustomerConfirmationEmailMode =
+    | "microsoft-plain-text"
+    | "standard-html"
+
 function requireEnv(name: string) {
     const value = process.env[name]?.trim()
 
@@ -49,10 +53,24 @@ function formatProduct(product: CustomerOrderProduct) {
     return `${product.name} x${product.quantity ?? 1}`
 }
 
+function isMicrosoftConsumerEmail(email: string) {
+    const domain = email.trim().toLowerCase().split("@")[1]
+
+    return ["outlook.com", "hotmail.com", "live.com", "msn.com"].includes(
+        domain
+    )
+}
+
 function getGreeting(customerName: string | null | undefined) {
     const name = customerName?.trim()
 
     return name ? `Hi ${name},` : "Hello,"
+}
+
+function getPlainCustomerGreeting(customerName: string | null | undefined) {
+    const name = customerName?.trim()
+
+    return name ? `Hello ${name},` : "Hello,"
 }
 
 function buildTextEmail(
@@ -97,6 +115,35 @@ function buildTextEmail(
         "",
         "Thank you for your order.",
         "",
+        "Rocket Press Wire Team",
+    ].join("\n")
+}
+
+function buildMicrosoftPlainTextEmail(data: CustomerOrderConfirmationEmailData) {
+    const products = data.products.map((product) => `- ${formatProduct(product)}`)
+
+    return [
+        getPlainCustomerGreeting(data.customerName),
+        "",
+        "Thank you for your order with Rocket Press Wire.",
+        "",
+        "Your order has been received successfully and is now being processed.",
+        "",
+        "Order Number:",
+        data.orderNumber,
+        "",
+        "Products:",
+        ...(products.length > 0 ? products : ["- No products listed"]),
+        "",
+        "Total Paid:",
+        formatCurrency(data.totalAmount, data.currency),
+        "",
+        "Current Status:",
+        "Processing",
+        "",
+        "You will receive updates as your order progresses.",
+        "",
+        "Thank you,",
         "Rocket Press Wire Team",
     ].join("\n")
 }
@@ -216,7 +263,7 @@ async function buildRawEmail({
     toEmail: string
     subject: string
     text: string
-    html: string
+    html?: string
 }) {
     return new MailComposer({
         from: {
@@ -227,7 +274,7 @@ async function buildRawEmail({
         replyTo: fromEmail,
         subject,
         text,
-        html,
+        ...(html ? { html } : {}),
     })
         .compile()
         .build()
@@ -268,20 +315,36 @@ export async function sendCustomerOrderConfirmationEmail(
     }
 
     try {
-        const subject = `Your Rocket Press Wire Order Is Confirmed - ${data.orderNumber}`
+        const emailMode: CustomerConfirmationEmailMode =
+            isMicrosoftConsumerEmail(customerEmail)
+                ? "microsoft-plain-text"
+                : "standard-html"
+        const subject =
+            emailMode === "microsoft-plain-text"
+                ? `Order Confirmed - ${data.orderNumber}`
+                : `Your Rocket Press Wire Order Is Confirmed - ${data.orderNumber}`
+        const text =
+            emailMode === "microsoft-plain-text"
+                ? buildMicrosoftPlainTextEmail(data)
+                : buildTextEmail(data, portalUrl)
+        const html =
+            emailMode === "microsoft-plain-text"
+                ? undefined
+                : buildHtmlEmail(data, portalUrl)
+
         console.log("CUSTOMER CONFIRMATION SEND ATTEMPT", {
             orderNumber: data.orderNumber,
             customerEmail,
             provider: "gmail-api",
-            mimeBuilder: "mailcomposer",
+            emailMode,
         })
 
         const rawMessage = await buildRawEmail({
             fromEmail: senderEmail,
             toEmail: customerEmail,
             subject,
-            text: buildTextEmail(data, portalUrl),
-            html: buildHtmlEmail(data, portalUrl),
+            text,
+            html,
         })
         const encodedMessage = encodeBase64Url(rawMessage)
 
@@ -296,6 +359,7 @@ export async function sendCustomerOrderConfirmationEmail(
             orderNumber: data.orderNumber,
             customerEmail,
             provider: "gmail-api",
+            emailMode,
             messageId: result.data.id,
         })
 
