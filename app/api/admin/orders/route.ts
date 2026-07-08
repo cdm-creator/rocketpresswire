@@ -12,6 +12,8 @@ const corsHeaders = {
 
     "Access-Control-Allow-Headers":
         "Content-Type, Authorization",
+
+    "Cache-Control": "no-store, no-cache, must-revalidate",
 }
 
 type AdminUserRow = {
@@ -47,6 +49,19 @@ type OrderRow = {
     created_at: string
     updated_at: string
     order_items: OrderItemRow[] | null
+}
+
+type FormattedOrderItem = {
+    id: string
+    product_id: string
+    product_name: string
+    quantity: number
+    amount: number
+    unit_amount: number
+    item_status: string
+    delivery_text: string | null
+    expected_completion_at: string | null
+    published_url: string | null
 }
 
 function jsonResponse(body: unknown, status: number) {
@@ -143,10 +158,25 @@ function buildSummary(orders: OrderRow[]) {
     )
 }
 
+function formatOrderItem(item: OrderItemRow): FormattedOrderItem {
+    return {
+        id: item.id,
+        product_id: item.product_id,
+        product_name: item.product_name,
+        quantity: item.quantity,
+        amount: item.unit_amount,
+        unit_amount: item.unit_amount,
+        item_status: item.item_status,
+        delivery_text: item.delivery_text,
+        expected_completion_at: item.expected_completion_at,
+        published_url: item.published_url,
+    }
+}
+
 function formatOrders(orders: OrderRow[]) {
     return orders.map(({ order_items, ...order }) => ({
         ...order,
-        items: order_items ?? [],
+        items: (order_items ?? []).map(formatOrderItem),
     }))
 }
 
