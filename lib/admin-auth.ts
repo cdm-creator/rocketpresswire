@@ -9,6 +9,7 @@ export const ADMIN_CORS_HEADERS = {
 }
 
 type AdminRow = {
+    id: string
     email: string
     name?: string | null
     is_active: boolean
@@ -99,24 +100,25 @@ export async function requireVerifiedAdmin(
         return { response: unauthorizedResponse() }
     }
 
-    const { data: admins, error: adminError } = await supabaseAdmin
-        .from("admins")
-        .select("email, name, is_active")
+    const { data: admin, error: adminError } = await supabaseAdmin
+        .from("admin_users")
+        .select("id,email,name,is_active")
         .eq("email", adminEmail)
         .eq("is_active", true)
-        .limit(1)
-        .returns<AdminRow[]>()
+        .single<AdminRow>()
 
     if (adminError) {
-        console.error(`[${logPrefix}] Failed to query admins`, {
+        if (adminError.code === "PGRST116") {
+            return { response: forbiddenResponse() }
+        }
+
+        console.error(`[${logPrefix}] Failed to query admin_users`, {
             adminEmail,
             error: adminError.message,
         })
 
         return { response: serverErrorResponse() }
     }
-
-    const admin = admins?.[0]
 
     if (!admin) {
         return { response: forbiddenResponse() }

@@ -18,12 +18,16 @@ const ADMIN_REDIRECT_URL = "https://rocketpresswire.framer.website/admin"
 const CUSTOMER_REDIRECT_URL = "https://rocketpresswire.framer.website/portal"
 
 type AdminRow = {
+    id: string
     email: string
     name: string | null
     is_active: boolean
 }
 
 function jsonResponse(body: unknown, status: number) {
+    console.log("[auth-role] Response status:", status)
+    console.log("[auth-role] Returned JSON:", body)
+
     return Response.json(body, {
         status,
         headers: corsHeaders,
@@ -74,6 +78,8 @@ export async function OPTIONS() {
 export async function GET(request: Request) {
     const accessToken = getBearerToken(request)
 
+    console.log("[auth-role] Token exists:", Boolean(accessToken))
+
     if (!accessToken) {
         return unauthorizedResponse()
     }
@@ -90,34 +96,49 @@ export async function GET(request: Request) {
 
         const normalizedEmail = normalizeEmail(user.email)
 
+        console.log("[auth-role] Supabase user email:", normalizedEmail || null)
+
         if (!normalizedEmail) {
             return unauthorizedResponse("Authenticated user has no email")
         }
 
-        const { data: admins, error: adminError } = await supabaseAdmin
-            .from("admins")
-            .select("email, name, is_active")
-            .eq("is_active", true)
+        const { data: admin, error: adminError } = await supabaseAdmin
+            .from("admin_users")
+            .select("id,email,name,is_active")
             .eq("email", normalizedEmail)
-            .limit(1)
-            .returns<AdminRow[]>()
+            .eq("is_active", true)
+            .single<AdminRow>()
 
         if (adminError) {
-            console.error("[auth-role] Failed to query admins", {
+            if (adminError.code === "PGRST116") {
+                console.log("[auth-role] Active admin record found:", false)
+
+                return jsonResponse(
+                    {
+                        role: "customer",
+                        redirect: CUSTOMER_REDIRECT_URL,
+                    },
+                    200
+                )
+            }
+
+            console.error("[auth-role] Failed to query admin_users", {
                 error: adminError.message,
             })
 
             return serverErrorResponse()
         }
 
-        const isAdmin = (admins ?? []).some(
-            (admin) => normalizeEmail(admin.email) === normalizedEmail
-        )
+        console.log("[auth-role] Active admin record found:", Boolean(admin))
 
-        if (isAdmin) {
+        if (admin) {
             return jsonResponse(
                 {
                     role: "admin",
+                    admin: {
+                        email: normalizeEmail(admin.email),
+                        name: admin.name,
+                    },
                     redirect: ADMIN_REDIRECT_URL,
                 },
                 200
