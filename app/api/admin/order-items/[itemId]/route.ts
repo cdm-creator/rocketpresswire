@@ -1,18 +1,14 @@
 import { supabaseAdmin } from "@/lib/supabase-admin"
+import {
+    ADMIN_CORS_HEADERS,
+    adminOptionsResponse,
+    requireVerifiedAdmin,
+} from "@/lib/admin-auth"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-const corsHeaders = {
-    "Access-Control-Allow-Origin":
-        "https://rocketpresswire.framer.website",
-
-    "Access-Control-Allow-Methods":
-        "PATCH, OPTIONS",
-
-    "Access-Control-Allow-Headers":
-        "Content-Type, Authorization",
-}
+const corsHeaders = ADMIN_CORS_HEADERS
 
 const ALLOWED_ITEM_STATUSES = new Set([
     "processing",
@@ -24,10 +20,6 @@ type RouteContext = {
     params: Promise<{
         itemId?: string
     }>
-}
-
-type AdminUserRow = {
-    email: string
 }
 
 type OrderItemRow = {
@@ -64,14 +56,6 @@ function badRequestResponse(error: string) {
     return jsonResponse({ error }, 400)
 }
 
-function unauthorizedResponse() {
-    return jsonResponse({ error: "Unauthorized" }, 401)
-}
-
-function forbiddenResponse() {
-    return jsonResponse({ error: "Forbidden" }, 403)
-}
-
 function notFoundResponse() {
     return jsonResponse({ error: "Order item not found" }, 404)
 }
@@ -80,34 +64,8 @@ function serverErrorResponse() {
     return jsonResponse({ error: "Server error" }, 500)
 }
 
-function getBearerToken(request: Request) {
-    const authorization = request.headers.get("authorization")
-
-    if (!authorization) {
-        return null
-    }
-
-    const parts = authorization.split(" ")
-
-    if (parts.length !== 2) {
-        return null
-    }
-
-    const [scheme, token] = parts
-
-    if (scheme !== "Bearer" || !token) {
-        return null
-    }
-
-    return token.trim() || null
-}
-
 function normalizeText(value: string | null | undefined) {
     return value?.trim().toLowerCase() ?? ""
-}
-
-function escapeLikePattern(value: string) {
-    return value.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_")
 }
 
 function normalizePublishedUrl(value: unknown) {
@@ -166,60 +124,20 @@ function deriveOrderStatus(items: OrderItemStatusRow[]) {
 }
 
 async function requireActiveAdmin(request: Request) {
-    const accessToken = getBearerToken(request)
-
-    if (!accessToken) {
-        return { response: unauthorizedResponse() }
-    }
-
-    const {
-        data: { user },
-        error: authError,
-    } = await supabaseAdmin.auth.getUser(accessToken)
-
-    if (authError || !user) {
-        return { response: unauthorizedResponse() }
-    }
-
-    const adminEmail = normalizeText(user.email)
-
-    if (!adminEmail) {
-        return { response: unauthorizedResponse() }
-    }
-
-    const { data: adminUsers, error: adminError } = await supabaseAdmin
-        .from("admin_users")
-        .select("email")
-        .eq("is_active", true)
-        .ilike("email", escapeLikePattern(adminEmail))
-        .limit(1)
-        .returns<AdminUserRow[]>()
-
-    if (adminError) {
-        console.error("[admin-order-items] Failed to query admin_users", {
-            adminEmail,
-            error: adminError.message,
-        })
-
-        return { response: serverErrorResponse() }
-    }
-
-    const admin = adminUsers?.find(
-        (adminUser) => normalizeText(adminUser.email) === adminEmail
+    const { admin, response } = await requireVerifiedAdmin(
+        request,
+        "admin-order-items"
     )
 
-    if (!admin) {
-        return { response: forbiddenResponse() }
+    if (response) {
+        return { response }
     }
 
-    return { adminEmail }
+    return { adminEmail: admin.email }
 }
 
 export async function OPTIONS() {
-    return new Response(null, {
-        status: 204,
-        headers: corsHeaders,
-    })
+    return adminOptionsResponse()
 }
 
 export async function PATCH(request: Request, context: RouteContext) {

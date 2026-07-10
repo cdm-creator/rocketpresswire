@@ -17,7 +17,7 @@ const corsHeaders = {
 const ADMIN_REDIRECT_URL = "https://rocketpresswire.framer.website/admin"
 const CUSTOMER_REDIRECT_URL = "https://rocketpresswire.framer.website/portal"
 
-type AdminUserRow = {
+type AdminRow = {
     email: string
     name: string | null
     is_active: boolean
@@ -64,10 +64,6 @@ function normalizeEmail(email: string | null | undefined) {
     return email?.trim().toLowerCase() ?? ""
 }
 
-function escapeLikePattern(value: string) {
-    return value.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_")
-}
-
 export async function OPTIONS() {
     return new Response(null, {
         status: 204,
@@ -98,24 +94,24 @@ export async function GET(request: Request) {
             return unauthorizedResponse("Authenticated user has no email")
         }
 
-        const { data: adminUsers, error: adminError } = await supabaseAdmin
-            .from("admin_users")
+        const { data: admins, error: adminError } = await supabaseAdmin
+            .from("admins")
             .select("email, name, is_active")
             .eq("is_active", true)
-            .ilike("email", escapeLikePattern(normalizedEmail))
+            .eq("email", normalizedEmail)
             .limit(1)
-            .returns<AdminUserRow[]>()
+            .returns<AdminRow[]>()
 
         if (adminError) {
-            console.error("[auth-role] Failed to query admin_users", {
+            console.error("[auth-role] Failed to query admins", {
                 error: adminError.message,
             })
 
             return serverErrorResponse()
         }
 
-        const isAdmin = (adminUsers ?? []).some(
-            (adminUser) => normalizeEmail(adminUser.email) === normalizedEmail
+        const isAdmin = (admins ?? []).some(
+            (admin) => normalizeEmail(admin.email) === normalizedEmail
         )
 
         if (isAdmin) {
