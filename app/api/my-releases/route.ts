@@ -33,6 +33,13 @@ type PressReleaseRow = {
     keywords: unknown
     meta_description: string | null
     status: string
+    admin_status: string | null
+    published_url: string | null
+    live_article_links: unknown
+    report_title: string | null
+    report_excel_url: string | null
+    report_pdf_url: string | null
+    admin_notes: string | null
     created_at: string
     updated_at?: string | null
 }
@@ -198,7 +205,37 @@ export async function GET(request: Request) {
 
         const { data, error } = await supabaseAdmin
             .from("press_releases")
-            .select("*")
+            .select(
+                `
+                id,
+                user_email,
+                order_number,
+                website_url,
+                title,
+                summary,
+                featured_image_url,
+                content,
+                categories,
+                company,
+                contact_name,
+                contact_email,
+                full_address,
+                phone,
+                seo_title,
+                keywords,
+                meta_description,
+                status,
+                admin_status,
+                published_url,
+                live_article_links,
+                report_title,
+                report_excel_url,
+                report_pdf_url,
+                admin_notes,
+                created_at,
+                updated_at
+            `
+            )
             .eq("user_email", userEmail)
             .order("created_at", { ascending: false })
             .returns<PressReleaseRow[]>()
