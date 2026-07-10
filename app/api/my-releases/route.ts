@@ -24,8 +24,11 @@ type PressReleaseRow = {
     featured_image_url: string | null
     content: string | null
     categories: unknown
+    company: string | null
     contact_name: string | null
     contact_email: string | null
+    full_address: string | null
+    phone: string | null
     seo_title: string | null
     keywords: unknown
     meta_description: string | null
@@ -42,8 +45,11 @@ type RequestBody = {
     featured_image_url?: unknown
     content?: unknown
     categories?: unknown
+    company?: unknown
     contact_name?: unknown
     contact_email?: unknown
+    full_address?: unknown
+    phone?: unknown
     seo_title?: unknown
     keywords?: unknown
     meta_description?: unknown
@@ -146,8 +152,11 @@ function buildReleaseInsert(body: RequestBody, userEmail: string) {
         summary: optionalString(body.summary),
         featured_image_url: optionalString(body.featured_image_url),
         content: optionalString(body.content),
+        company: optionalString(body.company),
         contact_name: optionalString(body.contact_name),
         contact_email: optionalString(body.contact_email),
+        full_address: optionalString(body.full_address),
+        phone: optionalString(body.phone),
         seo_title: optionalString(body.seo_title),
         meta_description: optionalString(body.meta_description),
     }
