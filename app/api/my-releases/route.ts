@@ -171,6 +171,7 @@ function buildReleaseInsert(body: RequestBody, userEmail: string) {
         return null
     }
 
+    
     return {
         user_email: userEmail,
         ...stringFields,
