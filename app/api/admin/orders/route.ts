@@ -2,8 +2,11 @@ import { supabaseAdmin } from "@/lib/supabase-admin"
 import {
     ADMIN_CORS_HEADERS,
     adminOptionsResponse,
-    requireVerifiedAdmin,
 } from "@/lib/admin-auth"
+import {
+    AdminAuthorizationError,
+    requireActiveAdmin,
+} from "@/lib/requireActiveAdmin"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -141,16 +144,9 @@ export async function OPTIONS() {
 
 export async function GET(request: Request) {
     try {
-        const { admin, response } = await requireVerifiedAdmin(
-            request,
-            "admin-orders"
-        )
+        const activeAdmin = await requireActiveAdmin(request)
 
-        if (response) {
-            return response
-        }
-
-        const adminEmail = admin.email
+        const adminEmail = activeAdmin.email
 
         const { data, error } = await supabaseAdmin
             .from("orders")
@@ -201,7 +197,7 @@ export async function GET(request: Request) {
             {
                 admin: {
                     email: adminEmail,
-                    name: admin.name,
+                    name: activeAdmin.admin.name,
                 },
                 summary: buildSummary(orders),
                 orders: formatOrders(orders),
@@ -209,6 +205,10 @@ export async function GET(request: Request) {
             200
         )
     } catch (error) {
+        if (error instanceof AdminAuthorizationError) {
+            return jsonResponse({ error: error.message }, error.status)
+        }
+
         console.error("[admin-orders] Server error", {
             error: error instanceof Error ? error.message : "Unknown error",
         })

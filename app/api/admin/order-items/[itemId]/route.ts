@@ -2,8 +2,11 @@ import { supabaseAdmin } from "@/lib/supabase-admin"
 import {
     ADMIN_CORS_HEADERS,
     adminOptionsResponse,
-    requireVerifiedAdmin,
 } from "@/lib/admin-auth"
+import {
+    AdminAuthorizationError,
+    requireActiveAdmin,
+} from "@/lib/requireActiveAdmin"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -123,30 +126,13 @@ function deriveOrderStatus(items: OrderItemStatusRow[]) {
     return "processing"
 }
 
-async function requireActiveAdmin(request: Request) {
-    const { admin, response } = await requireVerifiedAdmin(
-        request,
-        "admin-order-items"
-    )
-
-    if (response) {
-        return { response }
-    }
-
-    return { adminEmail: admin.email }
-}
-
 export async function OPTIONS() {
     return adminOptionsResponse()
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
     try {
-        const { response } = await requireActiveAdmin(request)
-
-        if (response) {
-            return response
-        }
+        await requireActiveAdmin(request)
 
         const { itemId } = await context.params
 
@@ -309,6 +295,10 @@ export async function PATCH(request: Request, context: RouteContext) {
             200
         )
     } catch (error) {
+        if (error instanceof AdminAuthorizationError) {
+            return jsonResponse({ error: error.message }, error.status)
+        }
+
         console.error("[admin-order-items] Server error", {
             error: error instanceof Error ? error.message : "Unknown error",
         })

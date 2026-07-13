@@ -2,9 +2,12 @@ import { supabaseAdmin } from "@/lib/supabase-admin"
 import {
     ADMIN_CORS_HEADERS,
     adminOptionsResponse,
-    requireVerifiedAdmin,
 } from "@/lib/admin-auth"
 import { sanitizePressReleaseHtml } from "@/lib/sanitizePressReleaseHtml"
+import {
+    AdminAuthorizationError,
+    requireActiveAdmin,
+} from "@/lib/requireActiveAdmin"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -164,14 +167,7 @@ export async function OPTIONS() {
 
 export async function PATCH(request: Request, context: RouteContext) {
     try {
-        const { admin, response } = await requireVerifiedAdmin(
-            request,
-            "admin-release-update"
-        )
-
-        if (response) {
-            return response
-        }
+        const activeAdmin = await requireActiveAdmin(request)
 
         const { id } = await context.params
 
@@ -202,7 +198,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
         if (error) {
             console.error("[admin-release-update] Failed to update release", {
-                adminEmail: admin.email,
+                adminEmail: activeAdmin.email,
                 releaseId: id,
                 error: error.message,
             })
@@ -227,6 +223,10 @@ export async function PATCH(request: Request, context: RouteContext) {
             200
         )
     } catch (error) {
+        if (error instanceof AdminAuthorizationError) {
+            return jsonResponse({ error: error.message }, error.status)
+        }
+
         console.error("[admin-release-update] Server error", {
             error: error instanceof Error ? error.message : "Unknown error",
         })

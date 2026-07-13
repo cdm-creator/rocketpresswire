@@ -1,5 +1,8 @@
 import { supabaseAdmin } from "@/lib/supabase-admin"
-import { requireVerifiedAdmin } from "@/lib/admin-auth"
+import {
+    AdminAuthorizationError,
+    requireActiveAdmin,
+} from "@/lib/requireActiveAdmin"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -63,14 +66,7 @@ export async function OPTIONS() {
 
 export async function POST(request: Request) {
     try {
-        const { admin, response } = await requireVerifiedAdmin(
-            request,
-            "admin-release-report"
-        )
-
-        if (response) {
-            return response
-        }
+        const activeAdmin = await requireActiveAdmin(request)
 
         let formData: FormData
 
@@ -110,7 +106,7 @@ export async function POST(request: Request) {
 
         if (uploadError) {
             console.error("[admin-release-report] Failed to upload report", {
-                adminEmail: admin.email,
+                adminEmail: activeAdmin.email,
                 releaseId,
                 type,
                 error: uploadError.message,
@@ -127,6 +123,10 @@ export async function POST(request: Request) {
 
         return jsonResponse({ url: publicUrl }, 200)
     } catch (error) {
+        if (error instanceof AdminAuthorizationError) {
+            return jsonResponse({ error: error.message }, error.status)
+        }
+
         console.error("[admin-release-report] Server error", {
             error: error instanceof Error ? error.message : "Unknown error",
         })

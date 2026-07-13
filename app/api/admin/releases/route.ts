@@ -2,9 +2,12 @@ import { supabaseAdmin } from "@/lib/supabase-admin"
 import {
     ADMIN_CORS_HEADERS,
     adminOptionsResponse,
-    requireVerifiedAdmin,
 } from "@/lib/admin-auth"
 import { sanitizePressReleaseHtml } from "@/lib/sanitizePressReleaseHtml"
+import {
+    AdminAuthorizationError,
+    requireActiveAdmin,
+} from "@/lib/requireActiveAdmin"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -58,14 +61,7 @@ export async function OPTIONS() {
 
 export async function GET(request: Request) {
     try {
-        const { admin, response } = await requireVerifiedAdmin(
-            request,
-            "admin-releases"
-        )
-
-        if (response) {
-            return response
-        }
+        const activeAdmin = await requireActiveAdmin(request)
 
         const { data, error } = await supabaseAdmin
             .from("press_releases")
@@ -75,7 +71,7 @@ export async function GET(request: Request) {
 
         if (error) {
             console.error("[admin-releases] Failed to query press releases", {
-                adminEmail: admin.email,
+                adminEmail: activeAdmin.email,
                 error: error.message,
             })
 
@@ -89,12 +85,19 @@ export async function GET(request: Request) {
 
         return jsonResponse(
             {
-                admin,
+                admin: {
+                    email: activeAdmin.email,
+                    name: activeAdmin.admin.name,
+                },
                 releases: safeReleases,
             },
             200
         )
     } catch (error) {
+        if (error instanceof AdminAuthorizationError) {
+            return jsonResponse({ error: error.message }, error.status)
+        }
+
         console.error("[admin-releases] Server error", {
             error: error instanceof Error ? error.message : "Unknown error",
         })
