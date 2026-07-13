@@ -48,6 +48,7 @@ type PressReleaseListRow = Pick<
     PressReleaseRow,
     | "id"
     | "order_number"
+    | "website_url"
     | "title"
     | "status"
     | "admin_status"
@@ -224,6 +225,7 @@ export async function GET(request: Request) {
                 `
                 id,
                 order_number,
+                website_url,
                 title,
                 status,
                 admin_status,
