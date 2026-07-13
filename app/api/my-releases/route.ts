@@ -44,6 +44,21 @@ type PressReleaseRow = {
     updated_at?: string | null
 }
 
+type PressReleaseListRow = Pick<
+    PressReleaseRow,
+    | "id"
+    | "order_number"
+    | "title"
+    | "status"
+    | "admin_status"
+    | "published_url"
+    | "report_title"
+    | "report_pdf_url"
+    | "report_excel_url"
+    | "live_article_links"
+    | "created_at"
+>
+
 type RequestBody = {
     order_number?: unknown
     website_url?: unknown
@@ -208,37 +223,21 @@ export async function GET(request: Request) {
             .select(
                 `
                 id,
-                user_email,
                 order_number,
-                website_url,
                 title,
-                summary,
-                featured_image_url,
-                content,
-                categories,
-                company,
-                contact_name,
-                contact_email,
-                full_address,
-                phone,
-                seo_title,
-                keywords,
-                meta_description,
                 status,
                 admin_status,
                 published_url,
-                live_article_links,
                 report_title,
-                report_excel_url,
                 report_pdf_url,
-                admin_notes,
-                created_at,
-                updated_at
+                report_excel_url,
+                live_article_links,
+                created_at
             `
             )
             .eq("user_email", userEmail)
             .order("created_at", { ascending: false })
-            .returns<PressReleaseRow[]>()
+            .returns<PressReleaseListRow[]>()
 
         if (error) {
             console.error("[my-releases] Failed to query press releases", {
