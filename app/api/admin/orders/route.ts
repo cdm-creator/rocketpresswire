@@ -7,6 +7,11 @@ import {
     AdminAuthorizationError,
     requireActiveAdmin,
 } from "@/lib/requireActiveAdmin"
+import {
+    addDaysToBusinessDate,
+    getCurrentBusinessDate,
+    normalizeToBusinessDate,
+} from "@/lib/businessDate"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -99,6 +104,13 @@ type OrderIdRow = {
     order_id: string | null
 }
 
+type DeadlineItemRow = {
+    id?: string | null
+    order_id: string | null
+    expected_completion_at: string | null
+    item_status: string | null
+}
+
 type OrderFilters = {
     status: string
     source: string
@@ -189,34 +201,39 @@ function buildSummary(
     )
 }
 
-async function getOverdueItemCount() {
-    const { count, error } = await supabaseAdmin
-        .from("order_items")
-        .select("id", { count: "exact", head: true })
-        .lt("expected_completion_at", getDayRange(0))
-        .not("item_status", "ilike", "completed")
-
-    if (error) {
-        throw error
-    }
-
-    return count ?? 0
+function isCompletedItemStatus(status: string | null | undefined) {
+    return normalizeText(status) === "completed"
 }
 
-async function getOverdueOrderCount() {
+function isOverdueDeadlineItem(item: DeadlineItemRow, today: string) {
+    const expectedDate = normalizeToBusinessDate(item.expected_completion_at)
+
+    return Boolean(
+        expectedDate &&
+            expectedDate < today &&
+            !isCompletedItemStatus(item.item_status)
+    )
+}
+
+async function getOverdueSummaryCounts(today: string) {
     const { data, error } = await supabaseAdmin
         .from("order_items")
-        .select("order_id")
-        .lt("expected_completion_at", getDayRange(0))
-        .not("item_status", "ilike", "completed")
-        .not("order_id", "is", null)
-        .returns<OrderIdRow[]>()
+        .select("id,order_id,expected_completion_at,item_status")
+        .not("expected_completion_at", "is", null)
+        .returns<DeadlineItemRow[]>()
 
     if (error) {
         throw error
     }
 
-    return uniqueOrderIds(data).length
+    const overdueItems = (data ?? []).filter((item) =>
+        isOverdueDeadlineItem(item, today)
+    )
+
+    return {
+        overdueItems: overdueItems.length,
+        overdueOrders: uniqueOrderIds(overdueItems).length,
+    }
 }
 
 function parsePositiveInteger(value: string | null, fallback: number) {
@@ -249,15 +266,6 @@ function uniqueOrderIds(rows: OrderIdRow[] | null) {
                 .filter((orderId): orderId is string => Boolean(orderId))
         )
     )
-}
-
-function getDayRange(offsetDays: number) {
-    const date = new Date()
-
-    date.setHours(0, 0, 0, 0)
-    date.setDate(date.getDate() + offsetDays)
-
-    return date.toISOString()
 }
 
 function applyOrderFilters(query: any, filters: OrderFilters) {
@@ -329,46 +337,67 @@ async function getProductSearchOrderIds(search: string) {
     return uniqueOrderIds(data)
 }
 
-async function getDeadlineOrderIds(deadline: string) {
+function itemMatchesDeadline(
+    item: DeadlineItemRow,
+    deadline: string,
+    today: string
+) {
+    if (isCompletedItemStatus(item.item_status)) {
+        return false
+    }
+
+    const expectedDate = normalizeToBusinessDate(item.expected_completion_at)
+
+    if (deadline === "none") {
+        return !expectedDate
+    }
+
+    if (!expectedDate) {
+        return false
+    }
+
+    const dueSoonEndDate = addDaysToBusinessDate(today, 3)
+
+    if (!dueSoonEndDate) {
+        return false
+    }
+
+    if (deadline === "overdue") {
+        return expectedDate < today
+    }
+
+    if (deadline === "due-today") {
+        return expectedDate === today
+    }
+
+    if (deadline === "due-soon") {
+        return expectedDate > today && expectedDate <= dueSoonEndDate
+    }
+
+    if (deadline === "on-track") {
+        return expectedDate > dueSoonEndDate
+    }
+
+    return false
+}
+
+async function getDeadlineOrderIds(deadline: string, today: string) {
     if (deadline === "all") {
         return null
     }
 
-    let query = supabaseAdmin.from("order_items").select("order_id")
-
-    if (deadline === "overdue") {
-        query = query
-            .lt("expected_completion_at", getDayRange(0))
-            .neq("item_status", "completed")
-    }
-
-    if (deadline === "due-today") {
-        query = query
-            .gte("expected_completion_at", getDayRange(0))
-            .lt("expected_completion_at", getDayRange(1))
-    }
-
-    if (deadline === "due-soon") {
-        query = query
-            .gte("expected_completion_at", getDayRange(1))
-            .lt("expected_completion_at", getDayRange(4))
-    }
-
-    if (deadline === "on-track") {
-        query = query.gte("expected_completion_at", getDayRange(4))
-    }
-
-    if (deadline === "none") {
-        query = query.is("expected_completion_at", null)
-    }
-
-    const { data, error } = await query.returns<OrderIdRow[]>()
+    const { data, error } = await supabaseAdmin
+        .from("order_items")
+        .select("order_id,expected_completion_at,item_status")
+        .returns<DeadlineItemRow[]>()
 
     if (error) {
         throw error
     }
 
-    return uniqueOrderIds(data)
+    return uniqueOrderIds(
+        (data ?? []).filter((item) => itemMatchesDeadline(item, deadline, today))
+    )
 }
 
 function parsePaginatedRequest(request: Request): ParsedPaginationRequest {
@@ -447,14 +476,16 @@ export async function GET(request: Request) {
             return badRequestResponse(paginationRequest.error)
         }
 
+        const businessToday = getCurrentBusinessDate()
+
         if (paginationRequest) {
-            const overdueItems = await getOverdueItemCount()
-            const overdueOrders = await getOverdueOrderCount()
+            const overdueSummary = await getOverdueSummaryCounts(businessToday)
             const searchOrderIds = await getProductSearchOrderIds(
                 paginationRequest.search
             )
             const deadlineOrderIds = await getDeadlineOrderIds(
-                paginationRequest.deadline
+                paginationRequest.deadline,
+                businessToday
             )
             const filters: OrderFilters = {
                 status: paginationRequest.status,
@@ -579,8 +610,8 @@ export async function GET(request: Request) {
                     },
                     summary: buildSummary(
                         summaryRows ?? [],
-                        overdueItems,
-                        overdueOrders
+                        overdueSummary.overdueItems,
+                        overdueSummary.overdueOrders
                     ),
                     orders: formatOrders((data ?? []) as OrderRow[]),
                     pagination: {
@@ -641,8 +672,7 @@ export async function GET(request: Request) {
         }
 
         const orders = data ?? []
-        const overdueItems = await getOverdueItemCount()
-        const overdueOrders = await getOverdueOrderCount()
+        const overdueSummary = await getOverdueSummaryCounts(businessToday)
 
         return jsonResponse(
             {
@@ -650,7 +680,11 @@ export async function GET(request: Request) {
                     email: adminEmail,
                     name: activeAdmin.admin.name,
                 },
-                summary: buildSummary(orders, overdueItems, overdueOrders),
+                summary: buildSummary(
+                    orders,
+                    overdueSummary.overdueItems,
+                    overdueSummary.overdueOrders
+                ),
                 orders: formatOrders(orders),
             },
             200
