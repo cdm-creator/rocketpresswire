@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase-admin"
+import { sanitizePressReleaseHtml } from "@/lib/sanitizePressReleaseHtml"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -50,6 +51,7 @@ type PressReleaseListRow = Pick<
     | "order_number"
     | "website_url"
     | "title"
+    | "content"
     | "status"
     | "admin_status"
     | "published_url"
@@ -174,7 +176,6 @@ function buildReleaseInsert(body: RequestBody, userEmail: string) {
         title: optionalString(body.title),
         summary: optionalString(body.summary),
         featured_image_url: optionalString(body.featured_image_url),
-        content: optionalString(body.content),
         company: optionalString(body.company),
         contact_name: optionalString(body.contact_name),
         contact_email: optionalString(body.contact_email),
@@ -194,10 +195,10 @@ function buildReleaseInsert(body: RequestBody, userEmail: string) {
         return null
     }
 
-    
     return {
         user_email: userEmail,
         ...stringFields,
+        content: sanitizePressReleaseHtml(body.content),
         categories: body.categories ?? null,
         keywords: body.keywords ?? null,
         status,
@@ -227,6 +228,7 @@ export async function GET(request: Request) {
                 order_number,
                 website_url,
                 title,
+                content,
                 status,
                 admin_status,
                 published_url,
@@ -250,7 +252,12 @@ export async function GET(request: Request) {
             return serverErrorResponse()
         }
 
-        return jsonResponse({ releases: data ?? [] }, 200)
+        const safeReleases = (data ?? []).map((release) => ({
+            ...release,
+            content: sanitizePressReleaseHtml(release.content),
+        }))
+
+        return jsonResponse({ releases: safeReleases }, 200)
     } catch (error) {
         console.error("[my-releases] Server error", {
             error: error instanceof Error ? error.message : "Unknown error",

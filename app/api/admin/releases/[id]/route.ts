@@ -4,6 +4,7 @@ import {
     adminOptionsResponse,
     requireVerifiedAdmin,
 } from "@/lib/admin-auth"
+import { sanitizePressReleaseHtml } from "@/lib/sanitizePressReleaseHtml"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -25,6 +26,7 @@ type RequestBody = {
     report_excel_url?: unknown
     report_pdf_url?: unknown
     admin_notes?: unknown
+    content?: unknown
 }
 
 type ReleaseUpdate = {
@@ -36,12 +38,13 @@ type ReleaseUpdate = {
     report_excel_url?: string | null
     report_pdf_url?: string | null
     admin_notes?: string | null
+    content?: string
     updated_at: string
 }
 
 type StringUpdateField = Exclude<
     keyof ReleaseUpdate,
-    "live_article_links" | "updated_at"
+    "content" | "live_article_links" | "updated_at"
 >
 
 function jsonResponse(body: unknown, status: number) {
@@ -144,6 +147,10 @@ function buildReleaseUpdate(body: RequestBody) {
         update.live_article_links = links
     }
 
+    if (Object.prototype.hasOwnProperty.call(body, "content")) {
+        update.content = sanitizePressReleaseHtml(body.content)
+    }
+
     if (Object.keys(update).length === 1) {
         return null
     }
@@ -207,10 +214,15 @@ export async function PATCH(request: Request, context: RouteContext) {
             return notFoundResponse()
         }
 
+        const safeRelease = {
+            ...data,
+            content: sanitizePressReleaseHtml(data.content),
+        }
+
         return jsonResponse(
             {
                 success: true,
-                release: data,
+                release: safeRelease,
             },
             200
         )

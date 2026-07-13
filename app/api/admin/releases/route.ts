@@ -4,6 +4,7 @@ import {
     adminOptionsResponse,
     requireVerifiedAdmin,
 } from "@/lib/admin-auth"
+import { sanitizePressReleaseHtml } from "@/lib/sanitizePressReleaseHtml"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -81,10 +82,15 @@ export async function GET(request: Request) {
             return serverErrorResponse()
         }
 
+        const safeReleases = (data ?? []).map((release) => ({
+            ...release,
+            content: sanitizePressReleaseHtml(release.content),
+        }))
+
         return jsonResponse(
             {
                 admin,
-                releases: data ?? [],
+                releases: safeReleases,
             },
             200
         )
