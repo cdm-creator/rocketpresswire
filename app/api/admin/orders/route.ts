@@ -39,6 +39,38 @@ const ALLOWED_DEADLINES = new Set([
     "none",
 ])
 
+const ORDER_SELECT_COLUMNS = `
+    id,
+    order_number,
+    customer_email,
+    customer_name,
+    source,
+    external_order_id,
+    amount_total,
+    currency,
+    payment_status,
+    order_status,
+    created_at,
+    updated_at
+`
+
+const ORDER_ITEM_SELECT_COLUMNS = `
+    id,
+    order_id,
+    product_id,
+    product_name,
+    quantity,
+    unit_amount,
+    item_status,
+    delivery_text,
+    published_url,
+    expected_completion_at
+`
+
+const SUMMARY_SELECT_COLUMNS = "amount_total,payment_status,order_status,source"
+const LATEST_ORDER_SELECT_COLUMNS =
+    "id,order_number,customer_name,customer_email,source,amount_total,currency,created_at"
+
 type OrderItemRow = {
     id: string
     order_id: string
@@ -50,7 +82,6 @@ type OrderItemRow = {
     delivery_text: string | null
     published_url: string | null
     expected_completion_at: string | null
-    created_at: string
 }
 
 type OrderRow = {
@@ -68,6 +99,8 @@ type OrderRow = {
     updated_at: string
     order_items: OrderItemRow[] | null
 }
+
+type OrderWithoutItems = Omit<OrderRow, "order_items">
 
 type FormattedOrderItem = {
     id: string
@@ -461,6 +494,54 @@ function formatOrders(orders: OrderRow[]) {
     }))
 }
 
+function groupItemsByOrderId(items: OrderItemRow[]) {
+    return items.reduce((itemsByOrderId, item) => {
+        const orderItems = itemsByOrderId.get(item.order_id) ?? []
+        orderItems.push(item)
+        itemsByOrderId.set(item.order_id, orderItems)
+
+        return itemsByOrderId
+    }, new Map<string, OrderItemRow[]>())
+}
+
+function attachOrderItems(
+    orders: OrderWithoutItems[],
+    items: OrderItemRow[]
+): OrderRow[] {
+    const itemsByOrderId = groupItemsByOrderId(items)
+
+    return orders.map((order) => ({
+        ...order,
+        order_items: itemsByOrderId.get(order.id) ?? [],
+    }))
+}
+
+async function getOrderItemsForOrders(orderIds: string[]) {
+    if (orderIds.length === 0) {
+        return []
+    }
+
+    const { data, error } = await supabaseAdmin
+        .from("order_items")
+        .select(ORDER_ITEM_SELECT_COLUMNS)
+        .in("order_id", orderIds)
+        .returns<OrderItemRow[]>()
+
+    if (error) {
+        throw error
+    }
+
+    return data ?? []
+}
+
+async function getOrdersWithItems(orders: OrderWithoutItems[]) {
+    const orderItems = await getOrderItemsForOrders(
+        orders.map((order) => order.id)
+    )
+
+    return attachOrderItems(orders, orderItems)
+}
+
 export async function OPTIONS() {
     return adminOptionsResponse()
 }
@@ -479,14 +560,15 @@ export async function GET(request: Request) {
         const businessToday = getCurrentBusinessDate()
 
         if (paginationRequest) {
-            const overdueSummary = await getOverdueSummaryCounts(businessToday)
-            const searchOrderIds = await getProductSearchOrderIds(
-                paginationRequest.search
-            )
-            const deadlineOrderIds = await getDeadlineOrderIds(
-                paginationRequest.deadline,
-                businessToday
-            )
+            const [overdueSummary, searchOrderIds, deadlineOrderIds] =
+                await Promise.all([
+                    getOverdueSummaryCounts(businessToday),
+                    getProductSearchOrderIds(paginationRequest.search),
+                    getDeadlineOrderIds(
+                        paginationRequest.deadline,
+                        businessToday
+                    ),
+                ])
             const filters: OrderFilters = {
                 status: paginationRequest.status,
                 source: paginationRequest.source,
@@ -501,7 +583,42 @@ export async function GET(request: Request) {
                     .select("id", { count: "exact", head: true }),
                 filters
             )
-            const { count, error: countError } = await countQuery
+
+            const from = (paginationRequest.page - 1) * paginationRequest.limit
+            const to = from + paginationRequest.limit - 1
+
+            const ordersQuery = applyOrderFilters(
+                supabaseAdmin.from("orders").select(ORDER_SELECT_COLUMNS),
+                filters
+            )
+
+            const ordersPromise = ordersQuery
+                .order("created_at", { ascending: false })
+                .range(from, to)
+
+            const summaryPromise = supabaseAdmin
+                .from("orders")
+                .select(SUMMARY_SELECT_COLUMNS)
+                .returns<SummaryOrderRow[]>()
+
+            const latestOrderPromise = supabaseAdmin
+                .from("orders")
+                .select(LATEST_ORDER_SELECT_COLUMNS)
+                .order("created_at", { ascending: false })
+                .limit(1)
+                .maybeSingle<LatestOrderRow>()
+
+            const [
+                { count, error: countError },
+                { data: orderRows, error: ordersError },
+                { data: summaryRows, error: summaryError },
+                { data: latestOrder, error: latestOrderError },
+            ] = await Promise.all([
+                countQuery,
+                ordersPromise,
+                summaryPromise,
+                latestOrderPromise,
+            ])
 
             if (countError) {
                 console.error("[admin-orders] Failed to count orders", {
@@ -512,67 +629,14 @@ export async function GET(request: Request) {
                 return serverErrorResponse()
             }
 
-            const total = count ?? 0
-            const totalPages = Math.max(
-                1,
-                Math.ceil(total / paginationRequest.limit)
-            )
-            const from = (paginationRequest.page - 1) * paginationRequest.limit
-            const to = from + paginationRequest.limit - 1
-
-            const ordersQuery = applyOrderFilters(
-                supabaseAdmin
-                    .from("orders")
-                    .select(
-                        `
-                        id,
-                        order_number,
-                        customer_email,
-                        customer_name,
-                        source,
-                        external_order_id,
-                        amount_total,
-                        currency,
-                        payment_status,
-                        order_status,
-                        created_at,
-                        updated_at,
-                        order_items (
-                            id,
-                            order_id,
-                            product_id,
-                            product_name,
-                            quantity,
-                            unit_amount,
-                            item_status,
-                            delivery_text,
-                            published_url,
-                            expected_completion_at,
-                            created_at
-                        )
-                    `
-                    ),
-                filters
-            )
-
-            const { data, error } = await ordersQuery
-                .order("created_at", { ascending: false })
-                .range(from, to)
-
-            if (error) {
+            if (ordersError) {
                 console.error("[admin-orders] Failed to query orders", {
                     adminEmail,
-                    error: error.message,
+                    error: ordersError.message,
                 })
 
                 return serverErrorResponse()
             }
-
-            const { data: summaryRows, error: summaryError } =
-                await supabaseAdmin
-                    .from("orders")
-                    .select("amount_total,payment_status,order_status,source")
-                    .returns<SummaryOrderRow[]>()
 
             if (summaryError) {
                 console.error("[admin-orders] Failed to query summary", {
@@ -583,16 +647,6 @@ export async function GET(request: Request) {
                 return serverErrorResponse()
             }
 
-            const { data: latestOrder, error: latestOrderError } =
-                await supabaseAdmin
-                    .from("orders")
-                    .select(
-                        "id,order_number,customer_name,customer_email,source,amount_total,currency,created_at"
-                    )
-                    .order("created_at", { ascending: false })
-                    .limit(1)
-                    .maybeSingle<LatestOrderRow>()
-
             if (latestOrderError) {
                 console.error("[admin-orders] Failed to query latest order", {
                     adminEmail,
@@ -601,6 +655,13 @@ export async function GET(request: Request) {
 
                 return serverErrorResponse()
             }
+
+            const orders = await getOrdersWithItems(orderRows ?? [])
+            const total = count ?? 0
+            const totalPages = Math.max(
+                1,
+                Math.ceil(total / paginationRequest.limit)
+            )
 
             return jsonResponse(
                 {
@@ -613,7 +674,7 @@ export async function GET(request: Request) {
                         overdueSummary.overdueItems,
                         overdueSummary.overdueOrders
                     ),
-                    orders: formatOrders((data ?? []) as OrderRow[]),
+                    orders: formatOrders(orders),
                     pagination: {
                         page: paginationRequest.page,
                         limit: paginationRequest.limit,
@@ -628,39 +689,19 @@ export async function GET(request: Request) {
             )
         }
 
-        const { data, error } = await supabaseAdmin
+        const ordersPromise = supabaseAdmin
             .from("orders")
-            .select(
-                `
-                id,
-                order_number,
-                customer_email,
-                customer_name,
-                source,
-                external_order_id,
-                amount_total,
-                currency,
-                payment_status,
-                order_status,
-                created_at,
-                updated_at,
-                order_items (
-                    id,
-                    order_id,
-                    product_id,
-                    product_name,
-                    quantity,
-                    unit_amount,
-                    item_status,
-                    delivery_text,
-                    published_url,
-                    expected_completion_at,
-                    created_at
-                )
-            `
-            )
+            .select(ORDER_SELECT_COLUMNS)
             .order("created_at", { ascending: false })
-            .returns<OrderRow[]>()
+            .returns<OrderWithoutItems[]>()
+
+        const [
+            { data: orderRows, error },
+            overdueSummary,
+        ] = await Promise.all([
+            ordersPromise,
+            getOverdueSummaryCounts(businessToday),
+        ])
 
         if (error) {
             console.error("[admin-orders] Failed to query orders", {
@@ -671,8 +712,7 @@ export async function GET(request: Request) {
             return serverErrorResponse()
         }
 
-        const orders = data ?? []
-        const overdueSummary = await getOverdueSummaryCounts(businessToday)
+        const orders = await getOrdersWithItems(orderRows ?? [])
 
         return jsonResponse(
             {
