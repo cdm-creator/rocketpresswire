@@ -27,9 +27,8 @@ export type ProductDeliveryLookup = {
     stripePriceId?: string | null
 }
 
-const DELIVERY_ESTIMATE_PATTERN = /^(\d{1,3})(?:\s*-\s*(\d{1,3}))?\s*days?$/i
-const MIN_DELIVERY_DAYS = 1
-const MAX_DELIVERY_DAYS = 365
+const DELIVERY_ESTIMATE_PATTERN =
+    /^(\d+)(?:(?:\s*(?:-|\u2013|\u2014)\s*|\s+to\s+)(\d+))?\s+(?:business\s+)?days?(?:\s+[a-z][a-z\s]*)?$/i
 
 export const PRODUCT_DELIVERY_CONFIG = [
     {
@@ -219,10 +218,10 @@ export function normalizeDeliveryEstimate(value: unknown): DeliveryEstimate | nu
     if (
         !Number.isInteger(startDays) ||
         !Number.isInteger(endDays) ||
-        startDays < MIN_DELIVERY_DAYS ||
-        endDays < MIN_DELIVERY_DAYS ||
-        startDays > MAX_DELIVERY_DAYS ||
-        endDays > MAX_DELIVERY_DAYS ||
+        !Number.isSafeInteger(startDays) ||
+        !Number.isSafeInteger(endDays) ||
+        startDays <= 0 ||
+        endDays <= 0 ||
         startDays > endDays
     ) {
         return null
@@ -231,7 +230,7 @@ export function normalizeDeliveryEstimate(value: unknown): DeliveryEstimate | nu
     return {
         deliveryText:
             startDays === endDays
-                ? `${endDays} Days`
+                ? `${endDays} ${endDays === 1 ? "Day" : "Days"}`
                 : `${startDays}-${endDays} Days`,
         expectedDays: endDays,
     }
