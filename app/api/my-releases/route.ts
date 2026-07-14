@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase-admin"
 import { sanitizePressReleaseHtml } from "@/lib/sanitizePressReleaseHtml"
+import { normalizeSourceDocumentMetadata } from "@/lib/source-document"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -41,6 +42,10 @@ type PressReleaseRow = {
     report_excel_url: string | null
     report_pdf_url: string | null
     admin_notes: string | null
+    source_document_path: string | null
+    source_document_name: string | null
+    source_document_mime_type: string | null
+    source_document_size_bytes: number | null
     created_at: string
     updated_at?: string | null
 }
@@ -59,6 +64,10 @@ type PressReleaseListRow = Pick<
     | "report_pdf_url"
     | "report_excel_url"
     | "live_article_links"
+    | "source_document_path"
+    | "source_document_name"
+    | "source_document_mime_type"
+    | "source_document_size_bytes"
     | "created_at"
 >
 
@@ -79,6 +88,10 @@ type RequestBody = {
     keywords?: unknown
     meta_description?: unknown
     status?: unknown
+    source_document_path?: unknown
+    source_document_name?: unknown
+    source_document_mime_type?: unknown
+    source_document_size_bytes?: unknown
 }
 
 function jsonResponse(body: unknown, status: number) {
@@ -138,7 +151,7 @@ async function getVerifiedUserEmail(request: Request) {
         return { response: unauthorizedResponse() }
     }
 
-    return { userEmail }
+    return { userEmail, userId: user.id }
 }
 
 function optionalString(value: unknown) {
@@ -169,7 +182,11 @@ function normalizeStatus(value: unknown) {
     return trimmedValue === "" ? "draft" : trimmedValue
 }
 
-function buildReleaseInsert(body: RequestBody, userEmail: string) {
+function buildReleaseInsert(
+    body: RequestBody,
+    userEmail: string,
+    userId: string
+) {
     const stringFields = {
         order_number: optionalString(body.order_number),
         website_url: optionalString(body.website_url),
@@ -195,9 +212,16 @@ function buildReleaseInsert(body: RequestBody, userEmail: string) {
         return null
     }
 
+    const sourceDocumentMetadata = normalizeSourceDocumentMetadata(body, userId)
+
+    if (!sourceDocumentMetadata) {
+        return null
+    }
+
     return {
         user_email: userEmail,
         ...stringFields,
+        ...sourceDocumentMetadata,
         content: sanitizePressReleaseHtml(body.content),
         categories: body.categories ?? null,
         keywords: body.keywords ?? null,
@@ -236,6 +260,10 @@ export async function GET(request: Request) {
                 report_pdf_url,
                 report_excel_url,
                 live_article_links,
+                source_document_path,
+                source_document_name,
+                source_document_mime_type,
+                source_document_size_bytes,
                 created_at
             `
             )
@@ -269,7 +297,9 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
     try {
-        const { userEmail, response } = await getVerifiedUserEmail(request)
+        const { userEmail, userId, response } = await getVerifiedUserEmail(
+            request
+        )
 
         if (response) {
             return response
@@ -283,7 +313,7 @@ export async function POST(request: Request) {
             return badRequestResponse("Invalid body")
         }
 
-        const releaseInsert = buildReleaseInsert(body, userEmail)
+        const releaseInsert = buildReleaseInsert(body, userEmail, userId)
 
         if (!releaseInsert) {
             return badRequestResponse("Invalid body")

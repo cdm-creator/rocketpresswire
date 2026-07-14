@@ -40,6 +40,10 @@ type PressReleaseRow = {
     report_excel_url: string | null
     report_pdf_url: string | null
     admin_notes: string | null
+    source_document_path: string | null
+    source_document_name: string | null
+    source_document_mime_type: string | null
+    source_document_size_bytes: number | null
     created_at: string
     updated_at: string | null
 }
