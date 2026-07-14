@@ -1,5 +1,6 @@
 import {
     addDaysToBusinessDate,
+    businessDateToUtcNoonISOString,
     normalizeToBusinessDate,
 } from "@/lib/businessDate"
 import { PRODUCT_NAME_MAP, PRODUCT_PRICE_MAP } from "@/lib/products"
@@ -253,8 +254,12 @@ export function addExpectedDays(
 
     const createdBusinessDate = normalizeToBusinessDate(createdDate.toISOString())
 
-    return createdBusinessDate
+    const expectedBusinessDate = createdBusinessDate
         ? addDaysToBusinessDate(createdBusinessDate, expectedDays)
+        : null
+
+    return expectedBusinessDate
+        ? businessDateToUtcNoonISOString(expectedBusinessDate)
         : null
 }
 

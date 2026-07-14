@@ -7,6 +7,7 @@ import {
     AdminAuthorizationError,
     requireActiveAdmin,
 } from "@/lib/requireActiveAdmin"
+import { businessDateToUtcNoonISOString } from "@/lib/businessDate"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -18,6 +19,7 @@ const ALLOWED_ITEM_STATUSES = new Set([
     "published",
     "completed",
 ])
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 
 type RouteContext = {
     params: Promise<{
@@ -95,6 +97,11 @@ function normalizeExpectedCompletionAt(value: unknown) {
     }
 
     const trimmedValue = value.trim()
+
+    if (DATE_ONLY_PATTERN.test(trimmedValue)) {
+        return businessDateToUtcNoonISOString(trimmedValue) ?? undefined
+    }
+
     const date = new Date(trimmedValue)
 
     if (!trimmedValue || Number.isNaN(date.getTime())) {

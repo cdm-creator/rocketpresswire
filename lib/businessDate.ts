@@ -64,6 +64,14 @@ export function addDaysToBusinessDate(dateString: string, days: number) {
     return formatUtcDate(date)
 }
 
+export function businessDateToUtcNoonISOString(dateString: string) {
+    if (!isValidDateOnly(dateString)) {
+        return null
+    }
+
+    return `${dateString}T12:00:00.000Z`
+}
+
 export function normalizeToBusinessDate(value: string | null | undefined) {
     const trimmedValue = value?.trim()
 
