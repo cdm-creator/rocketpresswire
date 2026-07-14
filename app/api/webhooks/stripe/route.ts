@@ -5,6 +5,8 @@ import { sendCustomerOrderConfirmationEmail } from "@/lib/customer-order-confirm
 import {
     addExpectedDays,
     getProductDeliveryBySlug,
+    normalizeDeliveryEstimate,
+    type DeliveryEstimate,
     type ProductSlug,
 } from "@/lib/product-delivery-config"
 import { PRODUCT_PRICE_MAP } from "@/lib/products"
@@ -33,6 +35,48 @@ function parseSelectedProducts(value: string | null | undefined) {
     }
 
     return [...new Set(value.split(",").map((id) => id.trim()).filter(Boolean))]
+}
+
+function parseDeliveryByProduct(
+    value: string | null | undefined,
+    selectedProducts: ProductId[]
+) {
+    const selectedProductIdSet = new Set(selectedProducts)
+    const deliveryByProduct: Partial<Record<ProductId, DeliveryEstimate>> = {}
+
+    if (!value) {
+        return deliveryByProduct
+    }
+
+    try {
+        const parsed = JSON.parse(value)
+
+        if (
+            parsed === null ||
+            typeof parsed !== "object" ||
+            Array.isArray(parsed)
+        ) {
+            return deliveryByProduct
+        }
+
+        for (const [productId, deliveryValue] of Object.entries(parsed)) {
+            const id = productId.trim()
+
+            if (!selectedProductIdSet.has(id as ProductId)) {
+                continue
+            }
+
+            const deliveryEstimate = normalizeDeliveryEstimate(deliveryValue)
+
+            if (deliveryEstimate) {
+                deliveryByProduct[id as ProductId] = deliveryEstimate
+            }
+        }
+    } catch {
+        return deliveryByProduct
+    }
+
+    return deliveryByProduct
 }
 
 function isProductId(productId: string): productId is ProductId {
@@ -170,6 +214,10 @@ export async function POST(request: Request) {
         }
 
         const validProducts = selectedProducts as ProductId[]
+        const deliveryByProduct = parseDeliveryByProduct(
+            session.metadata?.delivery_by_product,
+            validProducts
+        )
         const orderNumber = generateOrderNumber()
 
         console.log("[stripe-webhook] Processing completed checkout session", {
@@ -235,20 +283,26 @@ export async function POST(request: Request) {
             throw orderError
         }
 
-        const orderItems = priceResults.map(({ productId, product, unitAmount }) => ({
-            order_id: order.id,
-            product_id: productId,
-            product_name: product.canonicalName,
-            quantity: 1,
-            unit_amount: unitAmount,
-            item_status: "processing",
-            delivery_text: product.deliveryText,
-            expected_completion_at:
-                product.expectedDays === null
-                    ? null
-                    : addExpectedDays(order.created_at, product.expectedDays),
-            published_url: null,
-        }))
+        const orderItems = priceResults.map(({ productId, product, unitAmount }) => {
+            const deliveryEstimate = deliveryByProduct[productId]
+            const deliveryText = deliveryEstimate?.deliveryText ?? product.deliveryText
+            const expectedDays = deliveryEstimate?.expectedDays ?? product.expectedDays
+
+            return {
+                order_id: order.id,
+                product_id: productId,
+                product_name: product.canonicalName,
+                quantity: 1,
+                unit_amount: unitAmount,
+                item_status: "processing",
+                delivery_text: deliveryText,
+                expected_completion_at:
+                    expectedDays === null
+                        ? null
+                        : addExpectedDays(order.created_at, expectedDays),
+                published_url: null,
+            }
+        })
 
         const { error: orderItemsError } = await supabaseAdmin
             .from("order_items")

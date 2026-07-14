@@ -1,5 +1,7 @@
 import Stripe from "stripe"
 
+import { normalizeDeliveryEstimate } from "@/lib/product-delivery-config"
+
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
@@ -22,6 +24,44 @@ const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
+}
+
+function buildDeliveryMetadata(
+    value: unknown,
+    selectedProductIds: string[]
+): Record<string, string> {
+    if (value === undefined) {
+        return {}
+    }
+
+    if (
+        value === null ||
+        typeof value !== "object" ||
+        Array.isArray(value)
+    ) {
+        throw new Error("Invalid deliveryByProduct: expected an object.")
+    }
+
+    const selectedProductIdSet = new Set(selectedProductIds)
+    const deliveryMetadata: Record<string, string> = {}
+
+    for (const [productId, deliveryValue] of Object.entries(value)) {
+        const id = productId.trim()
+
+        if (!selectedProductIdSet.has(id)) {
+            continue
+        }
+
+        const deliveryEstimate = normalizeDeliveryEstimate(deliveryValue)
+
+        if (!deliveryEstimate) {
+            throw new Error(`Invalid delivery value for product ID: ${id}`)
+        }
+
+        deliveryMetadata[id] = deliveryEstimate.deliveryText
+    }
+
+    return deliveryMetadata
 }
 
 export async function OPTIONS() {
@@ -74,6 +114,17 @@ export async function POST(request: Request) {
                 quantity: 1,
             }
         })
+        const deliveryMetadata = buildDeliveryMetadata(
+            body.deliveryByProduct,
+            uniqueItems
+        )
+        const metadata: Record<string, string> = {
+            selected_products: uniqueItems.join(","),
+        }
+
+        if (Object.keys(deliveryMetadata).length > 0) {
+            metadata.delivery_by_product = JSON.stringify(deliveryMetadata)
+        }
 
         const session = await stripe.checkout.sessions.create({
             mode: "payment",
@@ -83,9 +134,7 @@ export async function POST(request: Request) {
      },
             success_url: "https://rocketpresswire.framer.website/thank-you",
             cancel_url: "https://rocketpresswire.framer.website/single-distribution",
-            metadata: {
-                selected_products: uniqueItems.join(","),
-            },
+            metadata,
         })
 
         return Response.json(
@@ -96,10 +145,16 @@ export async function POST(request: Request) {
         const isInvalidProductId =
             typeof error.message === "string" &&
             error.message.startsWith("Invalid product ID:")
+        const isInvalidDelivery =
+            typeof error.message === "string" &&
+            error.message.startsWith("Invalid delivery")
 
         return Response.json(
             { error: error.message || "Checkout failed." },
-            { status: isInvalidProductId ? 400 : 500, headers: corsHeaders }
+            {
+                status: isInvalidProductId || isInvalidDelivery ? 400 : 500,
+                headers: corsHeaders,
+            }
         )
     }
 }

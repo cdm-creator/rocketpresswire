@@ -1,4 +1,13 @@
+import {
+    addDaysToBusinessDate,
+    normalizeToBusinessDate,
+} from "@/lib/businessDate"
 import { PRODUCT_NAME_MAP, PRODUCT_PRICE_MAP } from "@/lib/products"
+
+export type DeliveryEstimate = {
+    deliveryText: string
+    expectedDays: number
+}
 
 export type ProductDeliveryConfig = {
     canonicalName: string
@@ -17,6 +26,10 @@ export type ProductDeliveryLookup = {
     externalId?: string | null
     stripePriceId?: string | null
 }
+
+const DELIVERY_ESTIMATE_PATTERN = /^(\d{1,3})(?:\s*-\s*(\d{1,3}))?\s*days?$/i
+const MIN_DELIVERY_DAYS = 1
+const MAX_DELIVERY_DAYS = 365
 
 export const PRODUCT_DELIVERY_CONFIG = [
     {
@@ -189,6 +202,41 @@ export function resolveProductDelivery(input: ProductDeliveryLookup) {
     return null
 }
 
+export function normalizeDeliveryEstimate(value: unknown): DeliveryEstimate | null {
+    if (typeof value !== "string") {
+        return null
+    }
+
+    const match = value.trim().match(DELIVERY_ESTIMATE_PATTERN)
+
+    if (!match) {
+        return null
+    }
+
+    const startDays = Number(match[1])
+    const endDays = match[2] ? Number(match[2]) : startDays
+
+    if (
+        !Number.isInteger(startDays) ||
+        !Number.isInteger(endDays) ||
+        startDays < MIN_DELIVERY_DAYS ||
+        endDays < MIN_DELIVERY_DAYS ||
+        startDays > MAX_DELIVERY_DAYS ||
+        endDays > MAX_DELIVERY_DAYS ||
+        startDays > endDays
+    ) {
+        return null
+    }
+
+    return {
+        deliveryText:
+            startDays === endDays
+                ? `${endDays} Days`
+                : `${startDays}-${endDays} Days`,
+        expectedDays: endDays,
+    }
+}
+
 export function addExpectedDays(
     createdAt: string | Date,
     expectedDays: number | null
@@ -204,9 +252,11 @@ export function addExpectedDays(
         return null
     }
 
-    return new Date(
-        createdDate.getTime() + expectedDays * 24 * 60 * 60 * 1000
-    ).toISOString()
+    const createdBusinessDate = normalizeToBusinessDate(createdDate.toISOString())
+
+    return createdBusinessDate
+        ? addDaysToBusinessDate(createdBusinessDate, expectedDays)
+        : null
 }
 
 export function getProductDeliveryBySlug(slug: ProductSlug) {
