@@ -28,7 +28,7 @@ export type ProductDeliveryLookup = {
 }
 
 const DELIVERY_ESTIMATE_PATTERN =
-    /^(\d+)(?:(?:\s*(?:-|\u2013|\u2014)\s*|\s+to\s+)(\d+))?\s+(?:business\s+)?days?(?:\s+[a-z][a-z\s]*)?$/i
+    /^(\d+)(?:(?:\s*(?:-|\u2013|\u2014)\s*|\s+to\s+)(\d+))?\s*(?:(?:business\s+)?days?|d)(?:\s+[a-z][a-z\s]*)?$/i
 
 export const PRODUCT_DELIVERY_CONFIG = [
     {
