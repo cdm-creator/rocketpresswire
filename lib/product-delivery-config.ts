@@ -1,11 +1,13 @@
+import { PRODUCT_NAME_MAP, PRODUCT_PRICE_MAP } from "@/lib/products"
+
 export type ProductDeliveryConfig = {
     canonicalName: string
     slug: string
     aliases: string[]
     stripePriceIds: string[]
     thriveCartProductIds: string[]
-    deliveryText: string
-    expectedDays: number
+    deliveryText: string | null
+    expectedDays: number | null
 }
 
 export type ProductDeliveryLookup = {
@@ -18,67 +20,94 @@ export type ProductDeliveryLookup = {
 
 export const PRODUCT_DELIVERY_CONFIG = [
     {
-        canonicalName: "MSN",
+        canonicalName: PRODUCT_NAME_MAP.msn,
         slug: "msn",
         aliases: ["MSN", "msn"],
-        stripePriceIds: ["price_1Tq8bFRvo61AD2cgV6by04aS"],
+        stripePriceIds: [PRODUCT_PRICE_MAP.msn],
         thriveCartProductIds: [],
         deliveryText: "5 Days",
         expectedDays: 5,
     },
     {
-        canonicalName: "Reuters",
+        canonicalName: PRODUCT_NAME_MAP.reuters,
         slug: "reuters",
         aliases: ["Reuters", "reuters"],
-        stripePriceIds: ["price_1Tq8cPRvo61AD2cgeWCTcRyd"],
+        stripePriceIds: [PRODUCT_PRICE_MAP.reuters],
         thriveCartProductIds: [],
         deliveryText: "7 Days",
         expectedDays: 7,
     },
     {
-        canonicalName: "OpenPR",
+        canonicalName: PRODUCT_NAME_MAP.openPR,
         slug: "openPR",
         aliases: ["OpenPR", "Open PR", "openPR", "openpr", "open-pr"],
-        stripePriceIds: ["price_1Tq8csRvo61AD2cgaOaDm646"],
+        stripePriceIds: [PRODUCT_PRICE_MAP.openPR],
         thriveCartProductIds: [],
         deliveryText: "2 Days",
         expectedDays: 2,
     },
     {
-        canonicalName: "Core",
+        canonicalName: PRODUCT_NAME_MAP.core,
         slug: "core",
         aliases: ["Core", "core"],
-        stripePriceIds: [],
+        stripePriceIds: [PRODUCT_PRICE_MAP.core],
         thriveCartProductIds: [],
         deliveryText: "5-7 Days Publishing",
         expectedDays: 7,
     },
     {
-        canonicalName: "Growth",
+        canonicalName: PRODUCT_NAME_MAP.growth,
         slug: "growth",
         aliases: ["Growth", "growth", "product_4"],
-        stripePriceIds: [],
+        stripePriceIds: [PRODUCT_PRICE_MAP.growth],
         thriveCartProductIds: ["product_4"],
         deliveryText: "5-7 Days Publishing",
         expectedDays: 7,
     },
     {
-        canonicalName: "Premium",
+        canonicalName: PRODUCT_NAME_MAP.premium,
         slug: "premium",
         aliases: ["Premium", "premium"],
-        stripePriceIds: [],
+        stripePriceIds: [PRODUCT_PRICE_MAP.premium],
         thriveCartProductIds: [],
         deliveryText: "5-7 Days Publishing",
         expectedDays: 7,
     },
     {
-        canonicalName: "Enterprise",
+        canonicalName: PRODUCT_NAME_MAP.enterprise,
         slug: "enterprise",
         aliases: ["Enterprise", "enterprise"],
-        stripePriceIds: [],
+        stripePriceIds: [PRODUCT_PRICE_MAP.enterprise],
         thriveCartProductIds: [],
         deliveryText: "5-7 Days Publishing",
         expectedDays: 7,
+    },
+    {
+        canonicalName: PRODUCT_NAME_MAP.morningstar,
+        slug: "morningstar",
+        aliases: ["Morningstar", "morningstar"],
+        stripePriceIds: [PRODUCT_PRICE_MAP.morningstar],
+        thriveCartProductIds: [],
+        deliveryText: null,
+        expectedDays: null,
+    },
+    {
+        canonicalName: PRODUCT_NAME_MAP.apple_news,
+        slug: "apple_news",
+        aliases: ["Apple News", "apple_news", "apple-news"],
+        stripePriceIds: [PRODUCT_PRICE_MAP.apple_news],
+        thriveCartProductIds: [],
+        deliveryText: null,
+        expectedDays: null,
+    },
+    {
+        canonicalName: PRODUCT_NAME_MAP.big_news_network,
+        slug: "big_news_network",
+        aliases: ["Big News Network", "big_news_network", "big-news-network"],
+        stripePriceIds: [PRODUCT_PRICE_MAP.big_news_network],
+        thriveCartProductIds: [],
+        deliveryText: null,
+        expectedDays: null,
     },
 ] as const satisfies ProductDeliveryConfig[]
 
@@ -160,7 +189,14 @@ export function resolveProductDelivery(input: ProductDeliveryLookup) {
     return null
 }
 
-export function addExpectedDays(createdAt: string | Date, expectedDays: number) {
+export function addExpectedDays(
+    createdAt: string | Date,
+    expectedDays: number | null
+) {
+    if (expectedDays === null) {
+        return null
+    }
+
     const createdDate =
         createdAt instanceof Date ? createdAt : new Date(createdAt)
 

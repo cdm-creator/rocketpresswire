@@ -7,14 +7,15 @@ import {
     getProductDeliveryBySlug,
     type ProductSlug,
 } from "@/lib/product-delivery-config"
+import { PRODUCT_PRICE_MAP } from "@/lib/products"
 import { supabaseAdmin } from "@/lib/supabase-admin"
 import { getStripe } from "@/lib/stripe"
 
 export const runtime = "nodejs"
 
-const STRIPE_PRODUCT_SLUGS = ["msn", "reuters", "openPR"] as const
+const STRIPE_PRODUCT_SLUGS = Object.keys(PRODUCT_PRICE_MAP) as ProductSlug[]
 
-type ProductId = (typeof STRIPE_PRODUCT_SLUGS)[number] & ProductSlug
+type ProductId = ProductSlug
 
 function generateOrderNumber() {
     const timestamp = new Date()
@@ -35,7 +36,7 @@ function parseSelectedProducts(value: string | null | undefined) {
 }
 
 function isProductId(productId: string): productId is ProductId {
-    return STRIPE_PRODUCT_SLUGS.includes(productId as ProductId)
+    return STRIPE_PRODUCT_SLUGS.includes(productId as ProductSlug)
 }
 
 async function orderExists(sessionId: string) {
@@ -242,10 +243,10 @@ export async function POST(request: Request) {
             unit_amount: unitAmount,
             item_status: "processing",
             delivery_text: product.deliveryText,
-            expected_completion_at: addExpectedDays(
-                order.created_at,
-                product.expectedDays
-            ),
+            expected_completion_at:
+                product.expectedDays === null
+                    ? null
+                    : addExpectedDays(order.created_at, product.expectedDays),
             published_url: null,
         }))
 

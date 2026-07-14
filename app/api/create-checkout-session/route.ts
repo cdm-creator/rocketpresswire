@@ -57,7 +57,9 @@ export async function POST(request: Request) {
             )
         }
 
-        const uniqueItems = [...new Set(items)]
+        const uniqueItems = [
+            ...new Set(items.map((productId) => String(productId).trim())),
+        ]
 
         const line_items = uniqueItems.map((productId) => {
             const id = String(productId).trim()
@@ -91,9 +93,13 @@ export async function POST(request: Request) {
             { status: 200, headers: corsHeaders }
         )
     } catch (error: any) {
+        const isInvalidProductId =
+            typeof error.message === "string" &&
+            error.message.startsWith("Invalid product ID:")
+
         return Response.json(
             { error: error.message || "Checkout failed." },
-            { status: 500, headers: corsHeaders }
+            { status: isInvalidProductId ? 400 : 500, headers: corsHeaders }
         )
     }
 }
