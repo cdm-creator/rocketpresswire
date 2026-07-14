@@ -1,5 +1,5 @@
-import { createClient } from "@supabase/supabase-js"
 import { createHash } from "crypto"
+import { supabaseAdmin } from "@/lib/supabase-admin"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -89,26 +89,6 @@ function getErrorLogData(error: unknown) {
     }
 }
 
-function getSupabaseAuthClient() {
-    const supabaseUrl = process.env.SUPABASE_URL
-    const supabaseAnonKey =
-        process.env.SUPABASE_ANON_KEY ??
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
-        process.env.SUPABASE_PUBLISHABLE_KEY ??
-        process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-
-    if (!supabaseUrl || !supabaseAnonKey) {
-        throw new Error("Missing Supabase auth configuration")
-    }
-
-    return createClient(supabaseUrl, supabaseAnonKey, {
-        auth: {
-            autoRefreshToken: false,
-            persistSession: false,
-        },
-    })
-}
-
 export async function OPTIONS() {
     return new Response(null, {
         status: 204,
@@ -118,9 +98,7 @@ export async function OPTIONS() {
 
 async function refreshSession(refreshToken: string): Promise<RefreshResult> {
     try {
-        const supabase = getSupabaseAuthClient()
-
-        const { data, error } = await supabase.auth.refreshSession({
+        const { data, error } = await supabaseAdmin.auth.refreshSession({
             refresh_token: refreshToken,
         })
 
