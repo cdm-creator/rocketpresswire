@@ -1,10 +1,4 @@
-import { sendAdminNewOrderEmail } from "@/lib/admin-order-notification"
-import { sendCustomerOrderConfirmationEmail } from "@/lib/customer-order-confirmation"
-import {
-    addExpectedDays,
-    resolveProductDelivery,
-} from "@/lib/product-delivery-config"
-import { supabaseAdmin } from "@/lib/supabase-admin"
+import { createOrderFromPayment } from "@/lib/create-order-from-payment"
 
 export const runtime = "nodejs"
 
@@ -15,6 +9,10 @@ type ThriveCartOrderItem = {
     productName: string
     quantity: number
     unitAmount: number | null
+}
+
+type CompleteThriveCartOrderItem = ThriveCartOrderItem & {
+    unitAmount: number
 }
 
 const SENSITIVE_KEY_PATTERN =
@@ -31,18 +29,18 @@ const SUCCESS_VALUES = new Set([
 
 const SUPPORTED_SUCCESS_EVENTS = new Set(["order.success"])
 
-function generateOrderNumber() {
-    const timestamp = new Date()
-        .toISOString()
-        .replace(/[-:.TZ]/g, "")
-        .slice(0, 14)
-    const suffix = Math.random().toString(36).slice(2, 8).toUpperCase()
-
-    return `RPW-${timestamp}-${suffix}`
-}
-
 function isJsonObject(value: unknown): value is JsonObject {
     return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+}
+
+function isCompleteOrderItem(
+    item: ThriveCartOrderItem
+): item is CompleteThriveCartOrderItem {
+    return Boolean(item.productId) &&
+        Boolean(item.productName) &&
+        Number.isFinite(item.quantity) &&
+        item.unitAmount !== null &&
+        Number.isFinite(item.unitAmount)
 }
 
 function parseFormValue(value: string): unknown {
@@ -519,21 +517,6 @@ function extractOrderItems(payload: unknown, fallbackAmount: number | null) {
     return items
 }
 
-async function orderExists(externalOrderId: string) {
-    const { data, error } = await supabaseAdmin
-        .from("orders")
-        .select("id")
-        .eq("source", "thrivecart")
-        .eq("external_order_id", externalOrderId)
-        .maybeSingle()
-
-    if (error) {
-        throw error
-    }
-
-    return Boolean(data)
-}
-
 export async function HEAD() {
     return new Response(null, { status: 200 })
 }
@@ -633,20 +616,15 @@ export async function POST(request: Request) {
         return Response.json({ received: true, ignored: true }, { status: 200 })
     }
 
+    const completePurchasedItems = purchasedItems.filter(isCompleteOrderItem)
+
     if (
         !customerEmail ||
         !externalOrderId ||
         !Number.isFinite(amountTotal) ||
         !currency ||
         purchasedItems.length === 0 ||
-        purchasedItems.some(
-            (item) =>
-                !item.productId ||
-                !item.productName ||
-                !Number.isFinite(item.quantity) ||
-                item.unitAmount === null ||
-                !Number.isFinite(item.unitAmount)
-        )
+        completePurchasedItems.length !== purchasedItems.length
     ) {
         console.log("[thrivecart-webhook] Ignoring paid event with incomplete mapping", {
             eventType,
@@ -661,7 +639,17 @@ export async function POST(request: Request) {
     }
 
     try {
-        if (await orderExists(externalOrderId)) {
+        const orderResult = await createOrderFromPayment({
+            source: "thrivecart",
+            externalOrderId,
+            customerEmail,
+            customerName,
+            amountTotal,
+            currency,
+            purchasedItems: completePurchasedItems,
+        })
+
+        if (orderResult.duplicate) {
             console.log("[thrivecart-webhook] Duplicate order skipped", {
                 externalOrderId,
             })
@@ -669,135 +657,11 @@ export async function POST(request: Request) {
             return Response.json({ received: true }, { status: 200 })
         }
 
-        const orderNumber = generateOrderNumber()
-
-        const { data: order, error: orderError } = await supabaseAdmin
-            .from("orders")
-            .insert({
-                order_number: orderNumber,
-                customer_email: customerEmail,
-                customer_name: customerName,
-                source: "thrivecart",
-                external_order_id: externalOrderId,
-                amount_total: amountTotal,
-                currency,
-                payment_status: "paid",
-                order_status: "processing",
-            })
-            .select("id, order_number, created_at")
-            .single()
-
-        if (orderError) {
-            if (orderError.code === "23505") {
-                console.log("[thrivecart-webhook] Duplicate order skipped after race", {
-                    externalOrderId,
-                })
-
-                return Response.json({ received: true }, { status: 200 })
-            }
-
-            throw orderError
-        }
-
-        const orderItems = purchasedItems.map((item) => {
-            const productDelivery = resolveProductDelivery({
-                productId: item.productId,
-                productName: item.productName,
-                externalId: item.productId,
-            })
-
-            if (!productDelivery) {
-                console.warn("UNMAPPED THRIVECART PRODUCT", {
-                    productId: item.productId,
-                    productName: item.productName,
-                    externalOrderId,
-                })
-            }
-
-            return {
-                order_id: order.id,
-                product_id: item.productId,
-                product_name: item.productName,
-                quantity: item.quantity,
-                unit_amount: item.unitAmount,
-                item_status: "processing",
-                delivery_text: productDelivery?.deliveryText ?? null,
-                expected_completion_at: productDelivery
-                    ? addExpectedDays(order.created_at, productDelivery.expectedDays)
-                    : null,
-                published_url: null,
-            }
-        })
-
-        const { error: orderItemsError } = await supabaseAdmin
-            .from("order_items")
-            .insert(orderItems)
-
-        if (orderItemsError) {
-            console.error("[thrivecart-webhook] Failed to insert order items", {
-                externalOrderId,
-                orderId: order.id,
-                error: orderItemsError.message,
-            })
-
-            const { error: cleanupError } = await supabaseAdmin
-                .from("orders")
-                .delete()
-                .eq("id", order.id)
-
-            if (cleanupError) {
-                console.error("[thrivecart-webhook] Failed to clean up incomplete order", {
-                    externalOrderId,
-                    orderId: order.id,
-                    error: cleanupError.message,
-                })
-            }
-
-            return Response.json(
-                { error: "Failed to create order items" },
-                { status: 500 }
-            )
-        }
-
         console.log("[thrivecart-webhook] Order created", {
             externalOrderId,
-            orderId: order.id,
-            itemCount: orderItems.length,
+            orderId: orderResult.orderId,
+            itemCount: orderResult.itemCount,
         })
-
-        const emailProducts = purchasedItems.map((item) => ({
-            name: item.productName,
-            quantity: item.quantity,
-            amount: item.unitAmount ?? undefined,
-        }))
-
-        try {
-            await sendAdminNewOrderEmail({
-                orderNumber: order.order_number,
-                customerName,
-                customerEmail,
-                source: "thrivecart",
-                products: emailProducts,
-                totalAmount: amountTotal,
-                currency,
-            })
-        } catch (emailError) {
-            console.error("Admin notification email failed:", emailError)
-        }
-
-        try {
-            await sendCustomerOrderConfirmationEmail({
-                orderNumber: order.order_number,
-                customerName,
-                customerEmail,
-                products: emailProducts,
-                totalAmount: amountTotal,
-                currency,
-                source: "thrivecart",
-            })
-        } catch (emailError) {
-            console.error("Customer confirmation email failed:", emailError)
-        }
 
         return Response.json({ received: true }, { status: 200 })
     } catch (error) {
