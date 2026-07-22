@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createOrderFromPayment } from "@/lib/create-order-from-payment";
-import { PRODUCT_NAME_MAP, PRODUCT_PRICE_MAP } from "@/lib/products";
+import {
+  isProductId,
+  PRODUCT_IDS,
+  PRODUCT_NAME_MAP,
+  PRODUCT_PRICE_MAP,
+  type ProductId,
+} from "@/lib/products";
 import { getStripe } from "@/lib/stripe";
 
 export const runtime = "nodejs";
 
-const SUPPORTED_PRODUCT_IDS = new Set(Object.keys(PRODUCT_NAME_MAP));
-const PRODUCT_ID_BY_PRICE_ID = new Map(
-  Object.entries(PRODUCT_PRICE_MAP).map(([productId, priceId]) => [priceId, productId]),
+const SUPPORTED_PRODUCT_IDS = new Set<string>(PRODUCT_IDS);
+const PRODUCT_ID_BY_PRICE_ID = new Map<string, ProductId>(
+  PRODUCT_IDS.map((productId) => [PRODUCT_PRICE_MAP[productId], productId] as const),
 );
 
 export async function POST(request: NextRequest) {
@@ -130,8 +136,8 @@ function parseSelectedProducts(value: string | undefined) {
   }
 }
 
-function isSupportedProductId(productId: string) {
-  return SUPPORTED_PRODUCT_IDS.has(productId);
+function isSupportedProductId(productId: string): productId is ProductId {
+  return SUPPORTED_PRODUCT_IDS.has(productId) && isProductId(productId);
 }
 
 function getUnitAmount(lineItem: Stripe.LineItem | undefined) {
@@ -159,7 +165,7 @@ function inferProductIdsFromLineItems(lineItems: Stripe.LineItem[]) {
 
       return priceId ? PRODUCT_ID_BY_PRICE_ID.get(priceId) : undefined;
     })
-    .filter((productId): productId is string => Boolean(productId));
+    .filter((productId): productId is ProductId => productId !== undefined);
 }
 
 function buildPurchasedItems(

@@ -1,24 +1,12 @@
 import Stripe from "stripe"
 
 import { normalizeDeliveryEstimate } from "@/lib/product-delivery-config"
+import { isProductId, PRODUCT_PRICE_MAP } from "@/lib/products"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string)
-
-const PRODUCT_PRICE_MAP: Record<string, string> = {
-    msn: "price_1Tq8bFRvo61AD2cgV6by04aS",
-    reuters: "price_1Tq8cPRvo61AD2cgeWCTcRyd",
-    openPR:"price_1Tq8csRvo61AD2cgaOaDm646",
-    core: "price_1TsxfzRvo61AD2cgCeCRxiJB",
-    growth: "price_1TsxgZRvo61AD2cg4Q2t2Yv8",
-    premium: "price_1Tsxh2Rvo61AD2cgU3FfoNYE",
-    enterprise: "price_1TsxheRvo61AD2cgfOqfW44W",
-    morningstar: "price_1TsxrCRvo61AD2cgEWqMfI66",
-    apple_news: "price_1TsxxmRvo61AD2cg2TMuv2yl",
-    big_news_network: "price_1TsxvFRvo61AD2cgSqKisJd6",
-}
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
@@ -103,11 +91,11 @@ export async function POST(request: Request) {
 
         const line_items = uniqueItems.map((productId) => {
             const id = String(productId).trim()
-            const priceId = PRODUCT_PRICE_MAP[id]
-
-            if (!priceId) {
+            if (!isProductId(id)) {
                 throw new Error(`Invalid product ID: ${id}`)
             }
+
+            const priceId = PRODUCT_PRICE_MAP[id]
 
             return {
                 price: priceId,
