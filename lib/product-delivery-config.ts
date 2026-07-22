@@ -38,7 +38,7 @@ export const PRODUCT_DELIVERY_CONFIG = [
         aliases: ["MSN", "msn"],
         stripePriceIds: [PRODUCT_PRICE_MAP.msn],
         thriveCartProductIds: [],
-        deliveryText: "5 Days",
+        deliveryText: "5 Business Days",
         expectedDays: 5,
     },
     {
@@ -47,8 +47,8 @@ export const PRODUCT_DELIVERY_CONFIG = [
         aliases: ["Reuters", "reuters"],
         stripePriceIds: [PRODUCT_PRICE_MAP.reuters],
         thriveCartProductIds: [],
-        deliveryText: "7 Days",
-        expectedDays: 7,
+        deliveryText: "5 Business Days",
+        expectedDays: 5,
     },
     {
         canonicalName: PRODUCT_NAME_MAP.core,
@@ -56,8 +56,8 @@ export const PRODUCT_DELIVERY_CONFIG = [
         aliases: ["Core", "core"],
         stripePriceIds: [PRODUCT_PRICE_MAP.core],
         thriveCartProductIds: [],
-        deliveryText: "5-7 Days Publishing",
-        expectedDays: 7,
+        deliveryText: "5 Business Days",
+        expectedDays: 5,
     },
     {
         canonicalName: PRODUCT_NAME_MAP.growth,
@@ -65,8 +65,8 @@ export const PRODUCT_DELIVERY_CONFIG = [
         aliases: ["Growth", "growth", "product_4"],
         stripePriceIds: [PRODUCT_PRICE_MAP.growth],
         thriveCartProductIds: ["product_4"],
-        deliveryText: "5-7 Days Publishing",
-        expectedDays: 7,
+        deliveryText: "5 Business Days",
+        expectedDays: 5,
     },
     {
         canonicalName: PRODUCT_NAME_MAP.premium,
@@ -74,8 +74,8 @@ export const PRODUCT_DELIVERY_CONFIG = [
         aliases: ["Premium", "premium"],
         stripePriceIds: [PRODUCT_PRICE_MAP.premium],
         thriveCartProductIds: [],
-        deliveryText: "5-7 Days Publishing",
-        expectedDays: 7,
+        deliveryText: "5 Business Days",
+        expectedDays: 5,
     },
     {
         canonicalName: PRODUCT_NAME_MAP.enterprise,
@@ -83,7 +83,7 @@ export const PRODUCT_DELIVERY_CONFIG = [
         aliases: ["Enterprise", "enterprise"],
         stripePriceIds: [PRODUCT_PRICE_MAP.enterprise],
         thriveCartProductIds: [],
-        deliveryText: "5-7 Days Publishing",
+        deliveryText: "7 Business Days",
         expectedDays: 7,
     },
     {
@@ -92,8 +92,8 @@ export const PRODUCT_DELIVERY_CONFIG = [
         aliases: ["Morningstar", "morningstar"],
         stripePriceIds: [PRODUCT_PRICE_MAP.morningstar],
         thriveCartProductIds: [],
-        deliveryText: null,
-        expectedDays: null,
+        deliveryText: "5 Business Days",
+        expectedDays: 5,
     },
     {
         canonicalName: PRODUCT_NAME_MAP.apple_news,
@@ -101,8 +101,8 @@ export const PRODUCT_DELIVERY_CONFIG = [
         aliases: ["Apple News", "apple_news", "apple-news"],
         stripePriceIds: [PRODUCT_PRICE_MAP.apple_news],
         thriveCartProductIds: [],
-        deliveryText: null,
-        expectedDays: null,
+        deliveryText: "5 Business Days",
+        expectedDays: 5,
     },
     {
         canonicalName: PRODUCT_NAME_MAP.big_news_network,
@@ -110,8 +110,8 @@ export const PRODUCT_DELIVERY_CONFIG = [
         aliases: ["Big News Network", "big_news_network", "big-news-network"],
         stripePriceIds: [PRODUCT_PRICE_MAP.big_news_network],
         thriveCartProductIds: [],
-        deliveryText: null,
-        expectedDays: null,
+        deliveryText: "5 Business Days",
+        expectedDays: 5,
     },
     {
         canonicalName: PRODUCT_NAME_MAP.usa_today,
@@ -119,8 +119,8 @@ export const PRODUCT_DELIVERY_CONFIG = [
         aliases: ["USA Today", "usa_today", "usa-today"],
         stripePriceIds: [PRODUCT_PRICE_MAP.usa_today],
         thriveCartProductIds: [],
-        deliveryText: null,
-        expectedDays: null,
+        deliveryText: "5 Business Days",
+        expectedDays: 5,
     },
     {
         canonicalName: PRODUCT_NAME_MAP.benzinga,
@@ -128,8 +128,8 @@ export const PRODUCT_DELIVERY_CONFIG = [
         aliases: ["Benzinga", "benzinga"],
         stripePriceIds: [PRODUCT_PRICE_MAP.benzinga],
         thriveCartProductIds: [],
-        deliveryText: null,
-        expectedDays: null,
+        deliveryText: "5 Business Days",
+        expectedDays: 5,
     },
     {
         canonicalName: PRODUCT_NAME_MAP.associated_press,
@@ -137,8 +137,8 @@ export const PRODUCT_DELIVERY_CONFIG = [
         aliases: ["Associated Press", "associated_press", "associated-press"],
         stripePriceIds: [PRODUCT_PRICE_MAP.associated_press],
         thriveCartProductIds: [],
-        deliveryText: null,
-        expectedDays: null,
+        deliveryText: "5 Business Days",
+        expectedDays: 5,
     },
     {
         canonicalName: PRODUCT_NAME_MAP.business_insider,
@@ -146,8 +146,8 @@ export const PRODUCT_DELIVERY_CONFIG = [
         aliases: ["Business Insider", "business_insider", "business-insider"],
         stripePriceIds: [PRODUCT_PRICE_MAP.business_insider],
         thriveCartProductIds: [],
-        deliveryText: null,
-        expectedDays: null,
+        deliveryText: "5 Business Days",
+        expectedDays: 5,
     },
     {
         canonicalName: PRODUCT_NAME_MAP.barchart,
@@ -155,8 +155,8 @@ export const PRODUCT_DELIVERY_CONFIG = [
         aliases: ["Barchart", "barchart"],
         stripePriceIds: [PRODUCT_PRICE_MAP.barchart],
         thriveCartProductIds: [],
-        deliveryText: null,
-        expectedDays: null,
+        deliveryText: "5 Business Days",
+        expectedDays: 5,
     },
     {
         canonicalName: PRODUCT_NAME_MAP.yahoo_finance,
@@ -164,8 +164,8 @@ export const PRODUCT_DELIVERY_CONFIG = [
         aliases: ["Yahoo Finance", "yahoo_finance", "yahoo-finance"],
         stripePriceIds: [PRODUCT_PRICE_MAP.yahoo_finance],
         thriveCartProductIds: [],
-        deliveryText: null,
-        expectedDays: null,
+        deliveryText: "5 Business Days",
+        expectedDays: 5,
     },
     {
         canonicalName: PRODUCT_NAME_MAP.ai_journal,
@@ -173,8 +173,8 @@ export const PRODUCT_DELIVERY_CONFIG = [
         aliases: ["AI Journal", "ai_journal", "ai-journal"],
         stripePriceIds: [PRODUCT_PRICE_MAP.ai_journal],
         thriveCartProductIds: [],
-        deliveryText: null,
-        expectedDays: null,
+        deliveryText: "5 Business Days",
+        expectedDays: 5,
     },
     {
         canonicalName: PRODUCT_NAME_MAP.techbullion,
@@ -182,8 +182,8 @@ export const PRODUCT_DELIVERY_CONFIG = [
         aliases: ["TechBullion", "Tech Bullion", "techbullion"],
         stripePriceIds: [PRODUCT_PRICE_MAP.techbullion],
         thriveCartProductIds: [],
-        deliveryText: null,
-        expectedDays: null,
+        deliveryText: "5 Business Days",
+        expectedDays: 5,
     },
     {
         canonicalName: PRODUCT_NAME_MAP.hackernoon,
@@ -191,8 +191,8 @@ export const PRODUCT_DELIVERY_CONFIG = [
         aliases: ["HackerNoon", "Hacker Noon", "hackernoon"],
         stripePriceIds: [PRODUCT_PRICE_MAP.hackernoon],
         thriveCartProductIds: [],
-        deliveryText: null,
-        expectedDays: null,
+        deliveryText: "5 Business Days",
+        expectedDays: 5,
     },
 ] as const satisfies ProductDeliveryConfig[]
 
@@ -303,8 +303,8 @@ export function normalizeDeliveryEstimate(value: unknown): DeliveryEstimate | nu
     return {
         deliveryText:
             startDays === endDays
-                ? `${endDays} ${endDays === 1 ? "Day" : "Days"}`
-                : `${startDays}-${endDays} Days`,
+                ? `${endDays} Business ${endDays === 1 ? "Day" : "Days"}`
+                : `${startDays}-${endDays} Business Days`,
         expectedDays: endDays,
     }
 }
@@ -337,4 +337,20 @@ export function addExpectedDays(
 
 export function getProductDeliveryBySlug(slug: ProductSlug) {
     return PRODUCT_DELIVERY_CONFIG.find((entry) => entry.slug === slug) ?? null
+}
+
+export function buildCanonicalDeliveryByProduct(
+    productIds: readonly ProductSlug[]
+) {
+    return Object.fromEntries(
+        productIds.map((productId) => {
+            const deliveryConfig = getProductDeliveryBySlug(productId)
+
+            if (!deliveryConfig?.deliveryText) {
+                throw new Error("Missing authoritative delivery configuration.")
+            }
+
+            return [productId, deliveryConfig.deliveryText]
+        })
+    ) as Record<ProductSlug, string>
 }

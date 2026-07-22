@@ -1,7 +1,12 @@
 import Stripe from "stripe"
 
-import { normalizeDeliveryEstimate } from "@/lib/product-delivery-config"
-import { isProductId, PRODUCT_PRICE_MAP } from "@/lib/products"
+import { buildCanonicalDeliveryByProduct } from "@/lib/product-delivery-config"
+import { validatePackageSelection } from "@/lib/package-addon-rules"
+import {
+    isProductId,
+    PRODUCT_PRICE_MAP,
+    type ProductId,
+} from "@/lib/products"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -16,40 +21,17 @@ const corsHeaders = {
 
 function buildDeliveryMetadata(
     value: unknown,
-    selectedProductIds: string[]
+    selectedProductIds: ProductId[]
 ): Record<string, string> {
-    if (value === undefined) {
-        return {}
-    }
-
-    if (
+    if (value !== undefined && (
         value === null ||
         typeof value !== "object" ||
         Array.isArray(value)
-    ) {
+    )) {
         throw new Error("Invalid deliveryByProduct: expected an object.")
     }
 
-    const selectedProductIdSet = new Set(selectedProductIds)
-    const deliveryMetadata: Record<string, string> = {}
-
-    for (const [productId, deliveryValue] of Object.entries(value)) {
-        const id = productId.trim()
-
-        if (!selectedProductIdSet.has(id)) {
-            continue
-        }
-
-        const deliveryEstimate = normalizeDeliveryEstimate(deliveryValue)
-
-        if (!deliveryEstimate) {
-            throw new Error(`Invalid delivery value for product ID: ${id}`)
-        }
-
-        deliveryMetadata[id] = deliveryEstimate.deliveryText
-    }
-
-    return deliveryMetadata
+    return buildCanonicalDeliveryByProduct(selectedProductIds)
 }
 
 export async function OPTIONS() {
@@ -89,11 +71,20 @@ export async function POST(request: Request) {
             ...new Set(items.map((productId) => String(productId).trim())),
         ]
 
-        const line_items = uniqueItems.map((productId) => {
-            const id = String(productId).trim()
-            if (!isProductId(id)) {
-                throw new Error(`Invalid product ID: ${id}`)
-            }
+        const invalidProductId = uniqueItems.find((id) => !isProductId(id))
+
+        if (invalidProductId) {
+            throw new Error(`Invalid product ID: ${invalidProductId}`)
+        }
+
+        const selectedProductIds = uniqueItems as ProductId[]
+        const packageValidation = validatePackageSelection(selectedProductIds)
+
+        if (!packageValidation.valid) {
+            throw new Error("Invalid package/outlet combination.")
+        }
+
+        const line_items = selectedProductIds.map((id) => {
 
             const priceId = PRODUCT_PRICE_MAP[id]
 
@@ -104,7 +95,7 @@ export async function POST(request: Request) {
         })
         const deliveryMetadata = buildDeliveryMetadata(
             body.deliveryByProduct,
-            uniqueItems
+            selectedProductIds
         )
         const metadata: Record<string, string> = {
             selected_products: uniqueItems.join(","),
@@ -136,11 +127,18 @@ export async function POST(request: Request) {
         const isInvalidDelivery =
             typeof error.message === "string" &&
             error.message.startsWith("Invalid delivery")
+        const isInvalidPackageSelection =
+            error.message === "Invalid package/outlet combination."
 
         return Response.json(
             { error: error.message || "Checkout failed." },
             {
-                status: isInvalidProductId || isInvalidDelivery ? 400 : 500,
+                status:
+                    isInvalidProductId ||
+                    isInvalidDelivery ||
+                    isInvalidPackageSelection
+                        ? 400
+                        : 500,
                 headers: corsHeaders,
             }
         )
