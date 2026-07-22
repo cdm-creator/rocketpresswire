@@ -5,6 +5,7 @@ export const COVERAGE_BOOST_IDS = ["morningstar", "apple_news", "big_news_networ
 export const DISTRIBUTION_PRODUCT_IDS = [
   "usa_today", "benzinga", "associated_press", "business_insider", "barchart",
   "yahoo_finance", "msn", "ai_journal", "reuters", "techbullion", "hackernoon",
+  "dummy",
 ] as const
 
 export const PRODUCT_IDS = [...PACKAGE_IDS, ...COVERAGE_BOOST_IDS, ...DISTRIBUTION_PRODUCT_IDS] as const
@@ -29,6 +30,7 @@ export const PRODUCT_PRICE_MAP = {
   reuters: "price_1TvrzPIgy8kc6qIKzelV6teu",
   techbullion: "price_1Tvs10Igy8kc6qIKToEhzkAt",
   hackernoon: "price_1Tvs1UIgy8kc6qIKBdhxeDw4",
+  dummy: "price_1Tvz1eIgy8kc6qIK2zdQY0S2",
 } as const satisfies Record<ProductId, string>
 
 export const PRODUCT_NAME_MAP = {
@@ -38,6 +40,7 @@ export const PRODUCT_NAME_MAP = {
   business_insider: "Business Insider", barchart: "Barchart", yahoo_finance: "Yahoo Finance",
   msn: "MSN", ai_journal: "AI Journal", reuters: "Reuters", techbullion: "TechBullion",
   hackernoon: "HackerNoon",
+  dummy: "Dummy",
 } as const satisfies Record<ProductId, string>
 
 const PRODUCT_ID_SET = new Set<string>(PRODUCT_IDS)

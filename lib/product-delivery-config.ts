@@ -194,6 +194,15 @@ export const PRODUCT_DELIVERY_CONFIG = [
         deliveryText: "5 Business Days",
         expectedDays: 5,
     },
+    {
+        canonicalName: PRODUCT_NAME_MAP.dummy,
+        slug: "dummy",
+        aliases: ["Dummy", "dummy"],
+        stripePriceIds: [PRODUCT_PRICE_MAP.dummy],
+        thriveCartProductIds: [],
+        deliveryText: "5 Business Days",
+        expectedDays: 5,
+    },
 ] as const satisfies ProductDeliveryConfig[]
 
 export type ProductSlug = (typeof PRODUCT_DELIVERY_CONFIG)[number]["slug"]
