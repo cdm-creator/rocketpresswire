@@ -32,6 +32,32 @@ function requireEnv(name: string) {
     return value
 }
 
+function getAdminRecipients() {
+    const configuredRecipients =
+        process.env.ADMIN_NOTIFICATION_EMAIL?.trim() ||
+        process.env.ADMIN_ORDER_NOTIFICATION_EMAIL?.trim() ||
+        process.env.ADMIN_EMAIL?.trim()
+
+    if (!configuredRecipients) {
+        throw new Error(
+            "[admin-order-notification] Missing admin recipient. Configure ADMIN_NOTIFICATION_EMAIL, ADMIN_ORDER_NOTIFICATION_EMAIL, or ADMIN_EMAIL."
+        )
+    }
+
+    const recipients = configuredRecipients
+        .split(",")
+        .map((recipient) => recipient.trim())
+        .filter(Boolean)
+
+    if (recipients.length === 0) {
+        throw new Error(
+            "[admin-order-notification] Admin recipient configuration contains no email addresses."
+        )
+    }
+
+    return recipients
+}
+
 function getTransporter() {
     if (transporter) {
         return transporter
@@ -105,14 +131,17 @@ function buildTextEmail(data: AdminNewOrderEmailData, adminUrl: string) {
         "Customer Email:",
         data.customerEmail,
         "",
-        "Source:",
+        "Payment Source:",
         formatSource(data.source),
         "",
         "Products:",
         ...(products.length > 0 ? products : ["- No products listed"]),
         "",
-        "Total:",
+        "Total Paid:",
         formatCurrency(data.totalAmount, data.currency),
+        "",
+        "Currency:",
+        data.currency.toUpperCase(),
         "",
         "Initial Status:",
         "Processing",
@@ -161,8 +190,9 @@ function buildHtmlEmail(data: AdminNewOrderEmailData, adminUrl: string) {
                   ${buildHtmlRow("Order Number", data.orderNumber)}
                   ${buildHtmlRow("Customer", customerName)}
                   ${buildHtmlRow("Customer Email", data.customerEmail)}
-                  ${buildHtmlRow("Source", formatSource(data.source))}
-                  ${buildHtmlRow("Total", formatCurrency(data.totalAmount, data.currency))}
+                  ${buildHtmlRow("Payment Source", formatSource(data.source))}
+                  ${buildHtmlRow("Total Paid", formatCurrency(data.totalAmount, data.currency))}
+                  ${buildHtmlRow("Currency", data.currency.toUpperCase())}
                   ${buildHtmlRow("Initial Status", "Processing")}
                 </table>
               </td>
@@ -196,17 +226,58 @@ function buildHtmlRow(label: string, value: string) {
 }
 
 export async function sendAdminNewOrderEmail(data: AdminNewOrderEmailData) {
-    const smtpUser = requireEnv("SMTP_USER")
-    const recipient = requireEnv("ADMIN_NOTIFICATION_EMAIL")
-    const adminUrl =
-        process.env.SITE_ADMIN_URL?.trim() ||
-        "https://rocketpresswire.framer.website/admin"
+    let recipients: string[] = []
 
-    await getTransporter().sendMail({
-        from: `Rocket Press Wire Orders <${smtpUser}>`,
-        to: recipient,
-        subject: `New Order Received - ${data.orderNumber}`,
-        text: buildTextEmail(data, adminUrl),
-        html: buildHtmlEmail(data, adminUrl),
-    })
+    try {
+        const smtpUser = requireEnv("SMTP_USER")
+        requireEnv("SMTP_APP_PASSWORD")
+        recipients = getAdminRecipients()
+
+        const adminUrl =
+            process.env.SITE_ADMIN_URL?.trim() ||
+            "https://rocketpresswire.framer.website/admin"
+
+        const info = await getTransporter().sendMail({
+            from: `Rocket Press Wire Orders <${smtpUser}>`,
+            replyTo: smtpUser,
+            to: recipients,
+            subject: `New Order Received - ${data.orderNumber}`,
+            text: buildTextEmail(data, adminUrl),
+            html: buildHtmlEmail(data, adminUrl),
+        })
+
+        if (info.accepted.length === 0 || info.rejected.length > 0) {
+            throw new Error(
+                `[admin-order-notification] Email delivery was not accepted for all recipients. Accepted: ${info.accepted.length}; rejected: ${info.rejected.length}.`
+            )
+        }
+
+        console.log("ADMIN NEW ORDER EMAIL SENT", {
+            orderNumber: data.orderNumber,
+            recipients,
+            messageId: info.messageId,
+            accepted: info.accepted,
+            rejected: info.rejected,
+        })
+
+        return {
+            success: true,
+            messageId: info.messageId,
+            accepted: info.accepted,
+            rejected: info.rejected,
+        }
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+
+        console.error("ADMIN NEW ORDER EMAIL FAILED", {
+            orderNumber: data.orderNumber,
+            recipients,
+            error: message,
+        })
+
+        throw new Error(
+            `[admin-order-notification] Failed to send new order email: ${message}`,
+            { cause: error }
+        )
+    }
 }
