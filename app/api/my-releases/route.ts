@@ -109,6 +109,13 @@ function badRequestResponse(error: string) {
     return jsonResponse({ error }, 400)
 }
 
+function releaseAlreadySubmittedResponse() {
+    return jsonResponse(
+        { error: "A release has already been submitted for this order." },
+        409
+    )
+}
+
 function serverErrorResponse() {
     return jsonResponse({ error: "Server error" }, 500)
 }
@@ -319,6 +326,56 @@ export async function POST(request: Request) {
             return badRequestResponse("Invalid body")
         }
 
+        const orderNumber = releaseInsert.order_number
+
+        if (!orderNumber) {
+            return badRequestResponse("Invalid body")
+        }
+
+        const { data: order, error: orderError } = await supabaseAdmin
+            .from("orders")
+            .select("id")
+            .eq("order_number", orderNumber)
+            .eq("customer_email", userEmail)
+            .maybeSingle()
+
+        if (orderError) {
+            console.error("[my-releases] Failed to verify order ownership", {
+                userEmail,
+                orderNumber,
+                error: orderError.message,
+            })
+
+            return serverErrorResponse()
+        }
+
+        if (!order) {
+            return badRequestResponse("Invalid order number")
+        }
+
+        const { data: existingRelease, error: existingReleaseError } =
+            await supabaseAdmin
+                .from("press_releases")
+                .select("id")
+                .eq("user_email", userEmail)
+                .eq("order_number", orderNumber)
+                .limit(1)
+                .maybeSingle()
+
+        if (existingReleaseError) {
+            console.error("[my-releases] Failed to check existing release", {
+                userEmail,
+                orderNumber,
+                error: existingReleaseError.message,
+            })
+
+            return serverErrorResponse()
+        }
+
+        if (existingRelease) {
+            return releaseAlreadySubmittedResponse()
+        }
+
         const { data, error } = await supabaseAdmin
             .from("press_releases")
             .insert(releaseInsert)
@@ -326,6 +383,10 @@ export async function POST(request: Request) {
             .single<PressReleaseRow>()
 
         if (error) {
+            if (error.code === "23505") {
+                return releaseAlreadySubmittedResponse()
+            }
+
             console.error("[my-releases] Failed to create press release", {
                 userEmail,
                 error: error.message,
