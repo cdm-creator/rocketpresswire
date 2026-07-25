@@ -46,6 +46,9 @@ type PressReleaseRow = {
     source_document_name: string | null
     source_document_mime_type: string | null
     source_document_size_bytes: number | null
+    same_content_for_all_outlets: boolean
+    outlet_ids: string[]
+    outlet_names: string[]
     created_at: string
     updated_at?: string | null
 }
@@ -68,6 +71,9 @@ type PressReleaseListRow = Pick<
     | "source_document_name"
     | "source_document_mime_type"
     | "source_document_size_bytes"
+    | "same_content_for_all_outlets"
+    | "outlet_ids"
+    | "outlet_names"
     | "created_at"
 >
 
@@ -92,6 +98,18 @@ type RequestBody = {
     source_document_name?: unknown
     source_document_mime_type?: unknown
     source_document_size_bytes?: unknown
+    same_content_for_all_outlets?: unknown
+    outlet_ids?: unknown
+    outlet_names?: unknown
+}
+
+type OrderItemRow = {
+    product_id: string
+    product_name: string
+}
+
+type ExistingReleaseRow = {
+    outlet_ids: string[] | null
 }
 
 function jsonResponse(body: unknown, status: number) {
@@ -109,9 +127,18 @@ function badRequestResponse(error: string) {
     return jsonResponse({ error }, 400)
 }
 
-function releaseAlreadySubmittedResponse() {
+function selectedOutletsAlreadySubmittedResponse() {
     return jsonResponse(
-        { error: "A release has already been submitted for this order." },
+        {
+            error: "A release has already been submitted for one or more selected outlets.",
+        },
+        409
+    )
+}
+
+function allOutletsAlreadySubmittedResponse() {
+    return jsonResponse(
+        { error: "All outlets in this order already have submitted releases." },
         409
     )
 }
@@ -187,6 +214,32 @@ function normalizeStatus(value: unknown) {
     const trimmedValue = value.trim()
 
     return trimmedValue === "" ? "draft" : trimmedValue
+}
+
+function normalizeStringArray(value: unknown) {
+    if (value === undefined || value === null) {
+        return []
+    }
+
+    if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+        return undefined
+    }
+
+    return [
+        ...new Set(
+            value
+                .map((item) => item.trim())
+                .filter((item) => item.length > 0)
+        ),
+    ]
+}
+
+function normalizeBoolean(value: unknown) {
+    if (value === undefined || value === null) {
+        return false
+    }
+
+    return typeof value === "boolean" ? value : undefined
 }
 
 function buildReleaseInsert(
@@ -271,6 +324,9 @@ export async function GET(request: Request) {
                 source_document_name,
                 source_document_mime_type,
                 source_document_size_bytes,
+                same_content_for_all_outlets,
+                outlet_ids,
+                outlet_names,
                 created_at
             `
             )
@@ -332,6 +388,20 @@ export async function POST(request: Request) {
             return badRequestResponse("Invalid body")
         }
 
+        const requestedOutletIds = normalizeStringArray(body.outlet_ids)
+        const submittedOutletNames = normalizeStringArray(body.outlet_names)
+        let sameContentForAllOutlets = normalizeBoolean(
+            body.same_content_for_all_outlets
+        )
+
+        if (
+            requestedOutletIds === undefined ||
+            submittedOutletNames === undefined ||
+            sameContentForAllOutlets === undefined
+        ) {
+            return badRequestResponse("Invalid body")
+        }
+
         const { data: order, error: orderError } = await supabaseAdmin
             .from("orders")
             .select("id")
@@ -353,17 +423,35 @@ export async function POST(request: Request) {
             return badRequestResponse("Invalid order number")
         }
 
-        const { data: existingRelease, error: existingReleaseError } =
-            await supabaseAdmin
+        const [
+            { data: orderItems, error: orderItemsError },
+            { data: existingReleases, error: existingReleaseError },
+        ] = await Promise.all([
+            supabaseAdmin
+                .from("order_items")
+                .select("product_id, product_name")
+                .eq("order_id", order.id)
+                .returns<OrderItemRow[]>(),
+            supabaseAdmin
                 .from("press_releases")
-                .select("id")
+                .select("outlet_ids")
                 .eq("user_email", userEmail)
                 .eq("order_number", orderNumber)
-                .limit(1)
-                .maybeSingle()
+                .returns<ExistingReleaseRow[]>(),
+        ])
+
+        if (orderItemsError) {
+            console.error("[my-releases] Failed to load order items", {
+                userEmail,
+                orderNumber,
+                error: orderItemsError.message,
+            })
+
+            return serverErrorResponse()
+        }
 
         if (existingReleaseError) {
-            console.error("[my-releases] Failed to check existing release", {
+            console.error("[my-releases] Failed to check existing releases", {
                 userEmail,
                 orderNumber,
                 error: existingReleaseError.message,
@@ -372,19 +460,102 @@ export async function POST(request: Request) {
             return serverErrorResponse()
         }
 
-        if (existingRelease) {
-            return releaseAlreadySubmittedResponse()
+        if (!orderItems || orderItems.length === 0) {
+            return badRequestResponse("Invalid order number")
+        }
+
+        const outletNameById = new Map<string, string>()
+
+        for (const item of orderItems) {
+            const productId = item.product_id?.trim()
+
+            if (productId && !outletNameById.has(productId)) {
+                outletNameById.set(productId, item.product_name?.trim() ?? "")
+            }
+        }
+
+        const validOutletIds = [...outletNameById.keys()]
+
+        if (validOutletIds.length === 0) {
+            return badRequestResponse("Invalid order number")
+        }
+
+        if (requestedOutletIds.some((id) => !outletNameById.has(id))) {
+            return badRequestResponse(
+                "One or more selected outlets do not belong to this order."
+            )
+        }
+
+        const releases = existingReleases ?? []
+        const hasLegacyRelease = releases.some(
+            (release) => !release.outlet_ids || release.outlet_ids.length === 0
+        )
+
+        if (hasLegacyRelease) {
+            return allOutletsAlreadySubmittedResponse()
+        }
+
+        const usedOutletIds = new Set(
+            releases.flatMap((release) => release.outlet_ids ?? [])
+        )
+        const remainingOutletIds = validOutletIds.filter(
+            (id) => !usedOutletIds.has(id)
+        )
+
+        if (remainingOutletIds.length === 0) {
+            return allOutletsAlreadySubmittedResponse()
+        }
+
+        let selectedOutletIds: string[]
+
+        if (orderItems.length === 1) {
+            selectedOutletIds = validOutletIds
+            sameContentForAllOutlets = true
+        } else if (sameContentForAllOutlets) {
+            selectedOutletIds = remainingOutletIds
+        } else {
+            if (requestedOutletIds.length === 0) {
+                return badRequestResponse(
+                    "At least one outlet must be selected."
+                )
+            }
+
+            selectedOutletIds = requestedOutletIds
+        }
+
+        if (selectedOutletIds.some((id) => usedOutletIds.has(id))) {
+            return selectedOutletsAlreadySubmittedResponse()
         }
 
         const { data, error } = await supabaseAdmin
             .from("press_releases")
-            .insert(releaseInsert)
+            .insert({
+                ...releaseInsert,
+                same_content_for_all_outlets: sameContentForAllOutlets,
+                outlet_ids: selectedOutletIds,
+                outlet_names: selectedOutletIds.map(
+                    (id) => outletNameById.get(id) ?? ""
+                ),
+            })
             .select("*")
             .single<PressReleaseRow>()
 
         if (error) {
-            if (error.code === "23505") {
-                return releaseAlreadySubmittedResponse()
+            if (
+                error.code === "23505" ||
+                error.message.includes(
+                    "A release has already been submitted for one or more selected outlets."
+                )
+            ) {
+                return selectedOutletsAlreadySubmittedResponse()
+            }
+
+            if (
+                error.message.includes(
+                    "All outlets in this order already have submitted releases."
+                )
+            ) {
+                return allOutletsAlreadySubmittedResponse()
             }
 
             console.error("[my-releases] Failed to create press release", {
