@@ -43,5 +43,14 @@ export const PRODUCT_NAME_MAP = {
   dummy: "Dummy",
 } as const satisfies Record<ProductId, string>
 
+export const WRITING_OPTION_PRICE_MAP = {
+  journalist: "price_1TyV3VIgy8kc6qIKPKlhSn8Z",
+} as const
+export type PaidWritingOption = keyof typeof WRITING_OPTION_PRICE_MAP
+
+export function isPaidWritingOption(value: string): value is PaidWritingOption {
+  return Object.prototype.hasOwnProperty.call(WRITING_OPTION_PRICE_MAP, value)
+}
+
 const PRODUCT_ID_SET = new Set<string>(PRODUCT_IDS)
 export function isProductId(value: string): value is ProductId { return PRODUCT_ID_SET.has(value) }

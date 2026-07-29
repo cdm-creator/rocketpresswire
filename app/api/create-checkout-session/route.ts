@@ -3,9 +3,11 @@ import Stripe from "stripe"
 import { buildCanonicalDeliveryByProduct } from "@/lib/product-delivery-config"
 import { validatePackageSelection } from "@/lib/package-addon-rules"
 import {
+    isPaidWritingOption,
     isProductId,
     PRODUCT_PRICE_MAP,
     type ProductId,
+    WRITING_OPTION_PRICE_MAP,
 } from "@/lib/products"
 
 export const runtime = "nodejs"
@@ -84,15 +86,37 @@ export async function POST(request: Request) {
             throw new Error("Invalid package/outlet combination.")
         }
 
-        const line_items = selectedProductIds.map((id) => {
+        const writingOption =
+            body.writingOption === undefined
+                ? undefined
+                : String(body.writingOption).trim()
 
-            const priceId = PRODUCT_PRICE_MAP[id]
+        if (
+            writingOption !== undefined &&
+            writingOption !== "own" &&
+            !isPaidWritingOption(writingOption)
+        ) {
+            throw new Error(`Invalid writing option: ${writingOption}`)
+        }
 
-            return {
-                price: priceId,
+        const line_items: Stripe.Checkout.SessionCreateParams.LineItem[] =
+            selectedProductIds.map((id) => {
+
+                const priceId = PRODUCT_PRICE_MAP[id]
+
+                return {
+                    price: priceId,
+                    quantity: 1,
+                }
+            })
+
+        if (writingOption && isPaidWritingOption(writingOption)) {
+            line_items.push({
+                price: WRITING_OPTION_PRICE_MAP[writingOption],
                 quantity: 1,
-            }
-        })
+            })
+        }
+
         const deliveryMetadata = buildDeliveryMetadata(
             body.deliveryByProduct,
             selectedProductIds
@@ -129,6 +153,9 @@ export async function POST(request: Request) {
             error.message.startsWith("Invalid delivery")
         const isInvalidPackageSelection =
             error.message === "Invalid package/outlet combination."
+        const isInvalidWritingOption =
+            typeof error.message === "string" &&
+            error.message.startsWith("Invalid writing option:")
 
         return Response.json(
             { error: error.message || "Checkout failed." },
@@ -136,7 +163,8 @@ export async function POST(request: Request) {
                 status:
                     isInvalidProductId ||
                     isInvalidDelivery ||
-                    isInvalidPackageSelection
+                    isInvalidPackageSelection ||
+                    isInvalidWritingOption
                         ? 400
                         : 500,
                 headers: corsHeaders,
