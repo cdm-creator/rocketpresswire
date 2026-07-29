@@ -51,6 +51,8 @@ export async function POST(request: NextRequest) {
         .trim()
         .toLowerCase();
       const customerName = session.customer_details?.name?.trim() || null;
+      const writingOption =
+        session.metadata?.writing_option === "journalist" ? "journalist" : "own";
 
       if (!customerEmail) {
         console.error("[stripe-webhook] Missing customer email", {
@@ -93,6 +95,7 @@ export async function POST(request: NextRequest) {
         externalOrderId: session.id,
         customerEmail,
         customerName,
+        writingOption,
         amountTotal,
         currency,
         purchasedItems,

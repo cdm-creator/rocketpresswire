@@ -166,6 +166,10 @@ export async function POST(request: Request) {
 
         const customerEmail = session.customer_details?.email?.trim().toLowerCase()
         const customerName = session.customer_details?.name?.trim() || null
+        const writingOption =
+            session.metadata?.writing_option === "journalist"
+                ? "journalist"
+                : "own"
         const selectedProducts = parseSelectedProducts(
             session.metadata?.selected_products
         )
@@ -260,6 +264,7 @@ export async function POST(request: Request) {
                 order_number: orderNumber,
                 customer_email: customerEmail,
                 customer_name: customerName,
+                writing_option: writingOption,
                 source: "stripe",
                 external_order_id: sessionId,
                 amount_total: session.amount_total,

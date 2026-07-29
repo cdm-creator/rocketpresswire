@@ -123,6 +123,8 @@ export async function POST(request: Request) {
         )
         const metadata: Record<string, string> = {
             selected_products: uniqueItems.join(","),
+            writing_option:
+                writingOption === "journalist" ? "journalist" : "own",
         }
 
         if (Object.keys(deliveryMetadata).length > 0) {

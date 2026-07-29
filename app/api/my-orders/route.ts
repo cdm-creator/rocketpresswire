@@ -30,6 +30,7 @@ type OrderRow = {
     id: string
     order_number: string
     customer_name: string | null
+    writing_option: "own" | "journalist"
     source: string
     external_order_id: string
     amount_total: number
@@ -163,6 +164,7 @@ export async function GET(request: Request) {
                 id,
                 order_number,
                 customer_name,
+                writing_option,
                 source,
                 external_order_id,
                 amount_total,

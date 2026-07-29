@@ -20,6 +20,7 @@ export type CreateOrderFromPaymentInput = {
     externalOrderId: string
     customerEmail: string
     customerName?: string | null
+    writingOption?: "own" | "journalist"
     amountTotal: number
     currency: string
     purchasedItems: PaymentOrderItem[]
@@ -101,6 +102,8 @@ export async function createOrderFromPayment(
             order_number: orderNumber,
             customer_email: input.customerEmail,
             customer_name: input.customerName ?? null,
+            writing_option:
+                input.writingOption === "journalist" ? "journalist" : "own",
             source: input.source,
             external_order_id: input.externalOrderId,
             amount_total: input.amountTotal,
