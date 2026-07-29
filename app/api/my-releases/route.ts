@@ -93,6 +93,8 @@ type RequestBody = {
     seo_title?: unknown
     keywords?: unknown
     meta_description?: unknown
+    writing_option?: unknown
+    journalist_notes?: unknown
     status?: unknown
     source_document_path?: unknown
     source_document_name?: unknown
@@ -260,6 +262,8 @@ function buildReleaseInsert(
         phone: optionalString(body.phone),
         seo_title: optionalString(body.seo_title),
         meta_description: optionalString(body.meta_description),
+        writing_option: optionalString(body.writing_option) || "own",
+        journalist_notes: optionalString(body.journalist_notes) || null,
     }
 
     if (Object.values(stringFields).some((value) => value === undefined)) {
