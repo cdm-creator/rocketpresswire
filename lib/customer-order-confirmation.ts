@@ -17,6 +17,12 @@ type CustomerOrderConfirmationEmailData = {
     source?: string
 }
 
+type CustomerOrderCompletionEmailData = {
+    orderNumber: string
+    customerName?: string | null
+    customerEmail: string
+}
+
 let transporter: nodemailer.Transporter<SMTPTransport.SentMessageInfo> | null =
     null
 
@@ -200,6 +206,81 @@ function buildStatusRow() {
     </tr>`
 }
 
+function buildCompletionTextEmail(
+    data: CustomerOrderCompletionEmailData,
+    portalUrl: string
+) {
+    return [
+        "ROCKET PRESS WIRE",
+        "",
+        "Your Order Is Completed",
+        "",
+        getGreeting(data.customerName),
+        "",
+        `Your Rocket Press Wire order ${data.orderNumber} has been completed.`,
+        "",
+        "Please check your dashboard for the latest order details and available deliverables.",
+        "",
+        "Log in to your dashboard:",
+        portalUrl,
+        "",
+        "Thank you for choosing Rocket Press Wire.",
+        "",
+        "Rocket Press Wire Team",
+    ].join("\n")
+}
+
+function buildCompletionHtmlEmail(
+    data: CustomerOrderCompletionEmailData,
+    portalUrl: string
+) {
+    return `<!doctype html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>Your Order Is Completed</title>
+  </head>
+  <body style="margin:0;padding:0;background:#07031d;color:#ffffff;font-family:Arial,Helvetica,sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#07031d;margin:0;padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#17102f;border-radius:16px;overflow:hidden;">
+            <tr>
+              <td style="padding:32px 28px 12px;">
+                <div style="font-size:13px;font-weight:700;letter-spacing:2px;color:#9d8eff;">ROCKET PRESS WIRE</div>
+                <h1 style="margin:18px 0 14px;font-size:28px;line-height:1.2;color:#ffffff;">Your Order Is Completed 🚀</h1>
+                <p style="margin:0 0 14px;color:#ffffff;font-size:16px;line-height:1.55;">${escapeHtml(
+                    getGreeting(data.customerName)
+                )}</p>
+                <p style="margin:0;color:#aaa4bd;font-size:16px;line-height:1.55;">Your Rocket Press Wire order <strong style="color:#ffffff;">${escapeHtml(
+                    data.orderNumber
+                )}</strong> has been completed.</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:18px 28px 8px;">
+                <p style="margin:0;color:#aaa4bd;font-size:15px;line-height:1.55;">Please check your dashboard for the latest order details and available deliverables.</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px 28px 12px;">
+                <a href="${escapeHtml(portalUrl)}" style="display:inline-block;background:#765eff;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 20px;border-radius:8px;">Log In to Your Dashboard</a>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:16px 28px 32px;">
+                <p style="margin:0;color:#aaa4bd;font-size:14px;line-height:1.5;">Thank you for choosing Rocket Press Wire.<br />Rocket Press Wire Team</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`
+}
+
 function getTransporter() {
     if (transporter) {
         return transporter
@@ -221,14 +302,19 @@ function getTransporter() {
     return transporter
 }
 
+function getPortalUrl() {
+    return (
+        process.env.SITE_PORTAL_URL?.trim() ||
+        "https://rocketpresswire.framer.website/portal"
+    )
+}
+
 export async function sendCustomerOrderConfirmationEmail(
     data: CustomerOrderConfirmationEmailData
 ) {
     const smtpUser = requireEnv("SMTP_USER")
 
-    const portalUrl =
-        process.env.SITE_PORTAL_URL?.trim() ||
-        "https://rocketpresswire.framer.website/portal"
+    const portalUrl = getPortalUrl()
 
     const customerEmail = data.customerEmail.trim().toLowerCase()
 
@@ -273,6 +359,57 @@ export async function sendCustomerOrderConfirmationEmail(
                 error instanceof Error
                     ? error.message
                     : String(error),
+        })
+
+        throw error
+    }
+}
+
+export async function sendCustomerOrderCompletionEmail(
+    data: CustomerOrderCompletionEmailData
+) {
+    const smtpUser = requireEnv("SMTP_USER")
+    const portalUrl = getPortalUrl()
+    const customerEmail = data.customerEmail.trim().toLowerCase()
+
+    if (!customerEmail) {
+        throw new Error(
+            "[customer-order-completion] Customer email is missing."
+        )
+    }
+
+    try {
+        const info = await getTransporter().sendMail({
+            from: {
+                name: "Rocket Press Wire",
+                address: smtpUser,
+            },
+            replyTo: smtpUser,
+            to: customerEmail,
+            subject: "Your Rocket Press Wire Order Is Completed 🚀",
+            text: buildCompletionTextEmail(data, portalUrl),
+            html: buildCompletionHtmlEmail(data, portalUrl),
+        })
+
+        console.log("CUSTOMER COMPLETION EMAIL SENT", {
+            orderNumber: data.orderNumber,
+            customerEmail,
+            messageId: info.messageId,
+            accepted: info.accepted,
+            rejected: info.rejected,
+        })
+
+        return {
+            success: true,
+            messageId: info.messageId,
+            accepted: info.accepted,
+            rejected: info.rejected,
+        }
+    } catch (error) {
+        console.error("CUSTOMER COMPLETION EMAIL FAILED", {
+            orderNumber: data.orderNumber,
+            customerEmail,
+            error: error instanceof Error ? error.message : String(error),
         })
 
         throw error

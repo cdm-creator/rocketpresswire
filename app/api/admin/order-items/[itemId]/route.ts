@@ -8,6 +8,7 @@ import {
     requireActiveAdmin,
 } from "@/lib/requireActiveAdmin"
 import { businessDateToUtcNoonISOString } from "@/lib/businessDate"
+import { sendCustomerOrderCompletionEmail } from "@/lib/customer-order-confirmation"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -41,6 +42,14 @@ type OrderItemStatusRow = {
 
 type UpdatedOrderRow = {
     id: string
+    order_status: string
+}
+
+type CurrentOrderRow = {
+    id: string
+    order_number: string
+    customer_email: string
+    customer_name: string | null
     order_status: string
 }
 
@@ -263,6 +272,37 @@ export async function PATCH(request: Request, context: RouteContext) {
 
         const nextOrderStatus = deriveOrderStatus(orderItems ?? [])
 
+        const { data: currentOrder, error: currentOrderError } =
+            await supabaseAdmin
+                .from("orders")
+                .select(
+                    "id, order_number, customer_email, customer_name, order_status"
+                )
+                .eq("id", updatedItem.order_id)
+                .maybeSingle()
+                .returns<CurrentOrderRow | null>()
+
+        if (currentOrderError) {
+            console.error("[admin-order-items] Failed to read order", {
+                orderId: updatedItem.order_id,
+                error: currentOrderError.message,
+            })
+
+            return serverErrorResponse()
+        }
+
+        if (!currentOrder) {
+            console.error("[admin-order-items] Order not found", {
+                orderId: updatedItem.order_id,
+            })
+
+            return serverErrorResponse()
+        }
+
+        const transitionedToCompleted =
+            normalizeText(currentOrder.order_status) !== "completed" &&
+            nextOrderStatus === "completed"
+
         const { data: updatedOrder, error: updateOrderError } =
             await supabaseAdmin
                 .from("orders")
@@ -282,6 +322,27 @@ export async function PATCH(request: Request, context: RouteContext) {
             })
 
             return serverErrorResponse()
+        }
+
+        if (transitionedToCompleted) {
+            try {
+                await sendCustomerOrderCompletionEmail({
+                    orderNumber: currentOrder.order_number,
+                    customerName: currentOrder.customer_name,
+                    customerEmail: currentOrder.customer_email,
+                })
+            } catch (emailError) {
+                console.error(
+                    "[admin-order-items] Customer completion email failed",
+                    {
+                        orderId: updatedOrder.id,
+                        error:
+                            emailError instanceof Error
+                                ? emailError.message
+                                : String(emailError),
+                    }
+                )
+            }
         }
 
         return jsonResponse(
