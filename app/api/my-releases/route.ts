@@ -93,7 +93,6 @@ type RequestBody = {
     seo_title?: unknown
     keywords?: unknown
     meta_description?: unknown
-    writing_option?: unknown
     journalist_notes?: unknown
     status?: unknown
     source_document_path?: unknown
@@ -108,6 +107,11 @@ type RequestBody = {
 type OrderItemRow = {
     product_id: string
     product_name: string
+}
+
+type ReleaseOrderRow = {
+    id: string
+    writing_option: string | null
 }
 
 type ExistingReleaseRow = {
@@ -262,7 +266,6 @@ function buildReleaseInsert(
         phone: optionalString(body.phone),
         seo_title: optionalString(body.seo_title),
         meta_description: optionalString(body.meta_description),
-        writing_option: optionalString(body.writing_option) || "own",
         journalist_notes: optionalString(body.journalist_notes) || null,
     }
 
@@ -408,10 +411,10 @@ export async function POST(request: Request) {
 
         const { data: order, error: orderError } = await supabaseAdmin
             .from("orders")
-            .select("id")
+            .select("id, writing_option")
             .eq("order_number", orderNumber)
             .eq("customer_email", userEmail)
-            .maybeSingle()
+            .maybeSingle<ReleaseOrderRow>()
 
         if (orderError) {
             console.error("[my-releases] Failed to verify order ownership", {
@@ -425,6 +428,19 @@ export async function POST(request: Request) {
 
         if (!order) {
             return badRequestResponse("Invalid order number")
+        }
+
+        if (
+            order.writing_option !== "own" &&
+            order.writing_option !== "journalist"
+        ) {
+            console.error("[my-releases] Order has invalid writing option", {
+                userEmail,
+                orderNumber,
+                writingOption: order.writing_option,
+            })
+
+            return serverErrorResponse()
         }
 
         const [
@@ -535,6 +551,7 @@ export async function POST(request: Request) {
             .from("press_releases")
             .insert({
                 ...releaseInsert,
+                writing_option: order.writing_option,
                 same_content_for_all_outlets: sameContentForAllOutlets,
                 outlet_ids: selectedOutletIds,
                 outlet_names: selectedOutletIds.map(
