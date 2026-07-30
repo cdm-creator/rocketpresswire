@@ -107,21 +107,10 @@ export async function GET(request: Request) {
             .select("id,email,name,is_active")
             .eq("email", normalizedEmail)
             .eq("is_active", true)
-            .single<AdminRow>()
+            .limit(1)
+            .maybeSingle<AdminRow>()
 
         if (adminError) {
-            if (adminError.code === "PGRST116") {
-                console.log("[auth-role] Active admin record found:", false)
-
-                return jsonResponse(
-                    {
-                        role: "customer",
-                        redirect: CUSTOMER_REDIRECT_URL,
-                    },
-                    200
-                )
-            }
-
             console.error("[auth-role] Failed to query admin_users", {
                 error: adminError.message,
             })
