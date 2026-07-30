@@ -48,6 +48,11 @@ type PressReleaseRow = {
     updated_at: string | null
 }
 
+type OrderWritingOptionRow = {
+    order_number: string | null
+    writing_option: string | null
+}
+
 function jsonResponse(body: unknown, status: number) {
     return Response.json(body, {
         status,
@@ -82,9 +87,63 @@ export async function GET(request: Request) {
             return serverErrorResponse()
         }
 
+        const orderNumbers = [
+            ...new Set(
+                (data ?? [])
+                    .map((release) => release.order_number?.trim())
+                    .filter((orderNumber): orderNumber is string =>
+                        Boolean(orderNumber)
+                    )
+            ),
+        ]
+        const writingOptionByOrderNumber = new Map<
+            string,
+            "own" | "journalist"
+        >()
+
+        if (orderNumbers.length > 0) {
+            const { data: orders, error: ordersError } = await supabaseAdmin
+                .from("orders")
+                .select("order_number,writing_option")
+                .in("order_number", orderNumbers)
+                .returns<OrderWritingOptionRow[]>()
+
+            if (ordersError) {
+                console.error(
+                    "[admin-releases] Failed to query release orders",
+                    {
+                        adminEmail: activeAdmin.email,
+                        error: ordersError.message,
+                    }
+                )
+
+                return serverErrorResponse()
+            }
+
+            for (const order of orders ?? []) {
+                const orderNumber = order.order_number?.trim()
+
+                if (
+                    orderNumber &&
+                    (order.writing_option === "own" ||
+                        order.writing_option === "journalist")
+                ) {
+                    writingOptionByOrderNumber.set(
+                        orderNumber,
+                        order.writing_option
+                    )
+                }
+            }
+        }
+
         const safeReleases = (data ?? []).map((release) => ({
             ...release,
             content: sanitizePressReleaseHtml(release.content),
+            writing_option: release.order_number
+                ? (writingOptionByOrderNumber.get(
+                      release.order_number.trim()
+                  ) ?? null)
+                : null,
         }))
 
         return jsonResponse(
