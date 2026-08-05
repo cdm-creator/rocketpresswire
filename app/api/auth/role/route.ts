@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic"
 
 const corsHeaders = {
     "Access-Control-Allow-Origin":
-        "https://rocketpresswire.framer.website",
+        "https://rocketpresswire.com/",
 
     "Access-Control-Allow-Methods":
         "GET, OPTIONS",
@@ -17,8 +17,8 @@ const corsHeaders = {
         "Content-Type, Authorization",
 }
 
-const ADMIN_REDIRECT_URL = "https://rocketpresswire.framer.website/admin"
-const CUSTOMER_REDIRECT_URL = "https://rocketpresswire.framer.website/portal"
+const ADMIN_REDIRECT_URL = "https://rocketpresswire.com/admin"
+const CUSTOMER_REDIRECT_URL = "https://rocketpresswire.com/portal"
 
 function jsonResponse(body: unknown, status: number) {
     console.log("[auth-role] Response status:", status)

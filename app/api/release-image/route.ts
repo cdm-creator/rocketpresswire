@@ -7,7 +7,7 @@ const RELEASE_IMAGE_BUCKET = "release-images"
 
 const corsHeaders = {
     "Access-Control-Allow-Origin":
-        "https://rocketpresswire.framer.website",
+        "https://rocketpresswire.com/",
 
     "Access-Control-Allow-Methods": "POST, OPTIONS",
 

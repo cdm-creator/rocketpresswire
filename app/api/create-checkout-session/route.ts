@@ -137,8 +137,8 @@ export async function POST(request: Request) {
             invoice_creation: {
               enabled: true,
      },
-            success_url: "https://rocketpresswire.framer.website/thank-you",
-            cancel_url: "https://rocketpresswire.framer.website/single-distribution",
+            success_url: "https://rocketpresswire.com/thank-you",
+            cancel_url: "https://rocketpresswire.com/single-distribution",
             metadata,
         })
 

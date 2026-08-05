@@ -2,7 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin"
 
 export const ADMIN_CORS_HEADERS = {
     "Access-Control-Allow-Origin":
-        "https://rocketpresswire.framer.website",
+        "https://rocketpresswire.com/",
     "Access-Control-Allow-Methods": "GET, PATCH, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Cache-Control": "no-store, no-cache, must-revalidate",

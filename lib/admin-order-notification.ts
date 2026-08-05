@@ -235,7 +235,7 @@ export async function sendAdminNewOrderEmail(data: AdminNewOrderEmailData) {
 
         const adminUrl =
             process.env.SITE_ADMIN_URL?.trim() ||
-            "https://rocketpresswire.framer.website/admin"
+            "https://rocketpresswire.com/admin"
 
         const info = await getTransporter().sendMail({
             from: `Rocket Press Wire Orders <${smtpUser}>`,

@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic"
 
 const corsHeaders = {
     "Access-Control-Allow-Origin":
-        "https://rocketpresswire.framer.website",
+        "https://rocketpresswire.com/",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Cache-Control": "no-store, no-cache, must-revalidate",

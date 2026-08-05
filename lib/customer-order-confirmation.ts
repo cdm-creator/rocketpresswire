@@ -305,7 +305,7 @@ function getTransporter() {
 function getPortalUrl() {
     return (
         process.env.SITE_PORTAL_URL?.trim() ||
-        "https://rocketpresswire.framer.website/portal"
+        "https://rocketpresswire.com/portal"
     )
 }
 
