@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic"
 
 const corsHeaders = {
     "Access-Control-Allow-Origin":
-        "https://rocketpresswire.com/",
+        "https://rocketpresswire.com",
 
     "Access-Control-Allow-Methods":
         "GET, OPTIONS",
