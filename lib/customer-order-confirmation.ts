@@ -15,6 +15,7 @@ type CustomerOrderConfirmationEmailData = {
     totalAmount: number
     currency: string
     source?: string
+    invoicePdfUrl?: string | null
 }
 
 type CustomerOrderCompletionEmailData = {
@@ -69,6 +70,9 @@ function buildTextEmail(
     portalUrl: string
 ) {
     const products = data.products.map((product) => `- ${formatProduct(product)}`)
+    const invoiceMessage = data.invoicePdfUrl
+        ? ["", "Your Stripe invoice PDF is attached to this email."]
+        : []
 
     return [
         "ROCKET PRESSWIRE",
@@ -81,6 +85,7 @@ function buildTextEmail(
         "",
         "Your payment was successful and your order has been confirmed.",
         "Our team will begin processing your distribution campaign.",
+        ...invoiceMessage,
         "",
         "ORDER SUMMARY",
         "",
@@ -146,6 +151,7 @@ function buildHtmlEmail(
                     getGreeting(data.customerName)
                 )}</p>
                 <p style="margin:0;color:#aaa4bd;font-size:16px;line-height:1.55;">Thank you for choosing Rocket PressWire. Your payment was successful and your order has been confirmed. Our team will begin processing your distribution campaign.</p>
+                ${data.invoicePdfUrl ? '<p style="margin:14px 0 0;color:#aaa4bd;font-size:16px;line-height:1.55;">Your Stripe invoice PDF is attached to this email.</p>' : ""}
               </td>
             </tr>
             <tr>
@@ -337,6 +343,15 @@ export async function sendCustomerOrderConfirmationEmail(
             subject: `Your Rocket PressWire Order Is Confirmed - ${data.orderNumber}`,
             text: buildTextEmail(data, portalUrl),
             html: buildHtmlEmail(data, portalUrl),
+            attachments: data.invoicePdfUrl
+                ? [
+                      {
+                          filename: `Rocket-PressWire-Invoice-${data.orderNumber.replace(/[^a-zA-Z0-9_-]+/g, "-")}.pdf`,
+                          path: data.invoicePdfUrl,
+                          contentType: "application/pdf",
+                      },
+                  ]
+                : undefined,
         })
 
         console.log("CUSTOMER CONFIRMATION EMAIL SENT", {

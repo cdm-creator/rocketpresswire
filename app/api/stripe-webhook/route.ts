@@ -9,6 +9,7 @@ import {
   type ProductId,
 } from "@/lib/products";
 import { getStripe } from "@/lib/stripe";
+import { getCheckoutInvoicePdfUrl } from "@/lib/stripe-invoice";
 
 export const runtime = "nodejs";
 
@@ -89,6 +90,31 @@ export async function POST(request: NextRequest) {
         lineItems.data.find((item) => item.currency)?.currency ??
         "usd"
       ).toLowerCase();
+      let invoicePdfUrl: string | null = null;
+
+      try {
+        invoicePdfUrl = await getCheckoutInvoicePdfUrl(getStripe(), session);
+
+        if (session.payment_status === "paid" && !invoicePdfUrl) {
+          console.warn("[stripe-webhook] Paid Checkout invoice PDF is unavailable", {
+            eventId: event.id,
+            sessionId: session.id,
+            invoiceId:
+              typeof session.invoice === "string"
+                ? session.invoice
+                : session.invoice?.id ?? null,
+          });
+        }
+      } catch (invoiceError) {
+        console.error("[stripe-webhook] Failed to retrieve invoice PDF", {
+          eventId: event.id,
+          sessionId: session.id,
+          error:
+            invoiceError instanceof Error
+              ? invoiceError.message
+              : String(invoiceError),
+        });
+      }
 
       const result = await createOrderFromPayment({
         source: "stripe",
@@ -100,6 +126,7 @@ export async function POST(request: NextRequest) {
         currency,
         purchasedItems,
         paymentStatus: session.payment_status,
+        invoicePdfUrl,
       });
 
       if (result.duplicate) {

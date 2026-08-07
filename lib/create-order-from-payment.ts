@@ -25,6 +25,7 @@ export type CreateOrderFromPaymentInput = {
     currency: string
     purchasedItems: PaymentOrderItem[]
     paymentStatus?: string | null
+    invoicePdfUrl?: string | null
 }
 
 export type CreateOrderFromPaymentResult =
@@ -224,6 +225,7 @@ export async function createOrderFromPayment(
             totalAmount: input.amountTotal,
             currency: input.currency,
             source: input.source,
+            invoicePdfUrl: input.invoicePdfUrl,
         })
     } catch (emailError) {
         console.error("Customer confirmation email failed:", emailError)
