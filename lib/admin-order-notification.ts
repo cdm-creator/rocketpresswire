@@ -64,15 +64,17 @@ function getTransporter() {
     }
 
     const smtpUser = requireEnv("SMTP_USER")
-    const smtpAppPassword = requireEnv("SMTP_APP_PASSWORD")
+    const smtpPassword = requireEnv("SMTP_PASS")
+    const smtpHost = process.env.SMTP_HOST?.trim() || "smtp.hostinger.com"
+    const smtpPort = Number(process.env.SMTP_PORT?.trim() || "465")
 
     transporter = nodemailer.createTransport({
-        host: "smtp.gmail.com",
-        port: 465,
-        secure: true,
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpPort === 465,
         auth: {
             user: smtpUser,
-            pass: smtpAppPassword,
+            pass: smtpPassword,
         },
     })
 
@@ -230,7 +232,7 @@ export async function sendAdminNewOrderEmail(data: AdminNewOrderEmailData) {
 
     try {
         const smtpUser = requireEnv("SMTP_USER")
-        requireEnv("SMTP_APP_PASSWORD")
+        requireEnv("SMTP_PASS")
         recipients = getAdminRecipients()
 
         const adminUrl =
