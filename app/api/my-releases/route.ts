@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase-admin"
+import { sendAdminReleaseSubmissionEmail } from "@/lib/admin-release-notification"
 import { sanitizePressReleaseHtml } from "@/lib/sanitizePressReleaseHtml"
 import { normalizeSourceDocumentMetadata } from "@/lib/source-document"
 
@@ -112,6 +113,7 @@ type OrderItemRow = {
 type ReleaseOrderRow = {
     id: string
     writing_option: string | null
+    customer_name: string | null
 }
 
 type ExistingReleaseRow = {
@@ -220,6 +222,10 @@ function normalizeStatus(value: unknown) {
     const trimmedValue = value.trim()
 
     return trimmedValue === "" ? "draft" : trimmedValue
+}
+
+function isFinalSubmittedStatus(status: string) {
+    return status.trim().toLowerCase() === "submitted"
 }
 
 function normalizeStringArray(value: unknown) {
@@ -411,7 +417,7 @@ export async function POST(request: Request) {
 
         const { data: order, error: orderError } = await supabaseAdmin
             .from("orders")
-            .select("id, writing_option")
+            .select("id, writing_option, customer_name")
             .eq("order_number", orderNumber)
             .eq("customer_email", userEmail)
             .maybeSingle<ReleaseOrderRow>()
@@ -585,6 +591,21 @@ export async function POST(request: Request) {
             })
 
             return serverErrorResponse()
+        }
+
+        if (isFinalSubmittedStatus(data.status)) {
+            try {
+                await sendAdminReleaseSubmissionEmail({
+                    orderNumber: data.order_number ?? orderNumber,
+                    customerName: order.customer_name,
+                    customerEmail: data.user_email,
+                    releaseTitle: data.title,
+                    outletNames: data.outlet_names,
+                    submittedAt: data.created_at,
+                })
+            } catch (emailError) {
+                console.error("Admin release notification email failed:", emailError)
+            }
         }
 
         return jsonResponse({ release: data }, 201)

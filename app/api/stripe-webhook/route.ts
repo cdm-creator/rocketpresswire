@@ -99,6 +99,7 @@ export async function POST(request: NextRequest) {
         amountTotal,
         currency,
         purchasedItems,
+        paymentStatus: session.payment_status,
       });
 
       if (result.duplicate) {

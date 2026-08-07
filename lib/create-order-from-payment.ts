@@ -24,6 +24,7 @@ export type CreateOrderFromPaymentInput = {
     amountTotal: number
     currency: string
     purchasedItems: PaymentOrderItem[]
+    paymentStatus?: string | null
 }
 
 export type CreateOrderFromPaymentResult =
@@ -195,18 +196,23 @@ export async function createOrderFromPayment(
         amount: item.unitAmount,
     }))
 
-    try {
-        await sendAdminNewOrderEmail({
-            orderNumber: order.order_number,
-            customerName: input.customerName ?? null,
-            customerEmail: input.customerEmail,
-            source: input.source,
-            products: emailProducts,
-            totalAmount: input.amountTotal,
-            currency: input.currency,
-        })
-    } catch (emailError) {
-        console.error("Admin notification email failed:", emailError)
+    const shouldSendAdminNotification =
+        input.source !== "stripe" || input.paymentStatus === "paid"
+
+    if (shouldSendAdminNotification) {
+        try {
+            await sendAdminNewOrderEmail({
+                orderNumber: order.order_number,
+                customerName: input.customerName ?? null,
+                customerEmail: input.customerEmail,
+                source: input.source,
+                products: emailProducts,
+                totalAmount: input.amountTotal,
+                currency: input.currency,
+            })
+        } catch (emailError) {
+            console.error("Admin notification email failed:", emailError)
+        }
     }
 
     try {

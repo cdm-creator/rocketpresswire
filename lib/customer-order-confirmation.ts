@@ -71,13 +71,13 @@ function buildTextEmail(
     const products = data.products.map((product) => `- ${formatProduct(product)}`)
 
     return [
-        "ROCKET PRESS WIRE",
+        "ROCKET PRESSWIRE",
         "",
         "Thank You for Your Order",
         "",
         getGreeting(data.customerName),
         "",
-        "Thank you for choosing Rocket Press Wire.",
+        "Thank you for choosing Rocket PressWire.",
         "",
         "Your payment was successful and your order has been confirmed.",
         "Our team will begin processing your distribution campaign.",
@@ -106,7 +106,7 @@ function buildTextEmail(
         "",
         "Thank you for your order.",
         "",
-        "Rocket Press Wire Team",
+        "Rocket PressWire Team",
     ].join("\n")
 }
 
@@ -140,12 +140,12 @@ function buildHtmlEmail(
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#17102f;border-radius:16px;overflow:hidden;">
             <tr>
               <td style="padding:32px 28px 12px;">
-                <div style="font-size:13px;font-weight:700;letter-spacing:2px;color:#9d8eff;">ROCKET PRESS WIRE</div>
+                <div style="font-size:13px;font-weight:700;letter-spacing:2px;color:#9d8eff;">ROCKET PRESSWIRE</div>
                 <h1 style="margin:18px 0 14px;font-size:28px;line-height:1.2;color:#ffffff;">Thank You for Your Order</h1>
                 <p style="margin:0 0 14px;color:#ffffff;font-size:16px;line-height:1.55;">${escapeHtml(
                     getGreeting(data.customerName)
                 )}</p>
-                <p style="margin:0;color:#aaa4bd;font-size:16px;line-height:1.55;">Thank you for choosing Rocket Press Wire. Your payment was successful and your order has been confirmed. Our team will begin processing your distribution campaign.</p>
+                <p style="margin:0;color:#aaa4bd;font-size:16px;line-height:1.55;">Thank you for choosing Rocket PressWire. Your payment was successful and your order has been confirmed. Our team will begin processing your distribution campaign.</p>
               </td>
             </tr>
             <tr>
@@ -177,7 +177,7 @@ function buildHtmlEmail(
             </tr>
             <tr>
               <td style="padding:16px 28px 32px;">
-                <p style="margin:0;color:#aaa4bd;font-size:14px;line-height:1.5;">Thank you for your order.<br />Rocket Press Wire Team</p>
+                <p style="margin:0;color:#aaa4bd;font-size:14px;line-height:1.5;">Thank you for your order.<br />Rocket PressWire Team</p>
               </td>
             </tr>
           </table>
@@ -211,22 +211,22 @@ function buildCompletionTextEmail(
     portalUrl: string
 ) {
     return [
-        "ROCKET PRESS WIRE",
+        "ROCKET PRESSWIRE",
         "",
         "Your Order Is Completed",
         "",
         getGreeting(data.customerName),
         "",
-        `Your Rocket Press Wire order ${data.orderNumber} has been completed.`,
+        `Your Rocket PressWire order ${data.orderNumber} has been completed.`,
         "",
-        "Please check your dashboard for the latest order details and available deliverables.",
+        "You can check your report and the latest order details in your dashboard.",
         "",
-        "Log in to your dashboard:",
+        "View your report in the dashboard:",
         portalUrl,
         "",
-        "Thank you for choosing Rocket Press Wire.",
+        "Thank you for choosing Rocket PressWire.",
         "",
-        "Rocket Press Wire Team",
+        "Rocket PressWire Team",
     ].join("\n")
 }
 
@@ -248,29 +248,29 @@ function buildCompletionHtmlEmail(
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#17102f;border-radius:16px;overflow:hidden;">
             <tr>
               <td style="padding:32px 28px 12px;">
-                <div style="font-size:13px;font-weight:700;letter-spacing:2px;color:#9d8eff;">ROCKET PRESS WIRE</div>
+                <div style="font-size:13px;font-weight:700;letter-spacing:2px;color:#9d8eff;">ROCKET PRESSWIRE</div>
                 <h1 style="margin:18px 0 14px;font-size:28px;line-height:1.2;color:#ffffff;">Your Order Is Completed 🚀</h1>
                 <p style="margin:0 0 14px;color:#ffffff;font-size:16px;line-height:1.55;">${escapeHtml(
                     getGreeting(data.customerName)
                 )}</p>
-                <p style="margin:0;color:#aaa4bd;font-size:16px;line-height:1.55;">Your Rocket Press Wire order <strong style="color:#ffffff;">${escapeHtml(
+                <p style="margin:0;color:#aaa4bd;font-size:16px;line-height:1.55;">Your Rocket PressWire order <strong style="color:#ffffff;">${escapeHtml(
                     data.orderNumber
                 )}</strong> has been completed.</p>
               </td>
             </tr>
             <tr>
               <td style="padding:18px 28px 8px;">
-                <p style="margin:0;color:#aaa4bd;font-size:15px;line-height:1.55;">Please check your dashboard for the latest order details and available deliverables.</p>
+                <p style="margin:0;color:#aaa4bd;font-size:15px;line-height:1.55;">You can check your report and the latest order details in your dashboard.</p>
               </td>
             </tr>
             <tr>
               <td style="padding:24px 28px 12px;">
-                <a href="${escapeHtml(portalUrl)}" style="display:inline-block;background:#765eff;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 20px;border-radius:8px;">Log In to Your Dashboard</a>
+                <a href="${escapeHtml(portalUrl)}" style="display:inline-block;background:#765eff;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 20px;border-radius:8px;">View Report in Your Dashboard</a>
               </td>
             </tr>
             <tr>
               <td style="padding:16px 28px 32px;">
-                <p style="margin:0;color:#aaa4bd;font-size:14px;line-height:1.5;">Thank you for choosing Rocket Press Wire.<br />Rocket Press Wire Team</p>
+                <p style="margin:0;color:#aaa4bd;font-size:14px;line-height:1.5;">Thank you for choosing Rocket PressWire.<br />Rocket PressWire Team</p>
               </td>
             </tr>
           </table>
@@ -329,12 +329,12 @@ export async function sendCustomerOrderConfirmationEmail(
     try {
         const info = await getTransporter().sendMail({
             from: {
-                name: "Rocket Press Wire",
+                name: "Rocket PressWire",
                 address: smtpUser,
             },
             replyTo: smtpUser,
             to: customerEmail,
-            subject: `Your Rocket Press Wire Order Is Confirmed - ${data.orderNumber}`,
+            subject: `Your Rocket PressWire Order Is Confirmed - ${data.orderNumber}`,
             text: buildTextEmail(data, portalUrl),
             html: buildHtmlEmail(data, portalUrl),
         })
@@ -383,12 +383,12 @@ export async function sendCustomerOrderCompletionEmail(
     try {
         const info = await getTransporter().sendMail({
             from: {
-                name: "Rocket Press Wire",
+                name: "Rocket PressWire",
                 address: smtpUser,
             },
             replyTo: smtpUser,
             to: customerEmail,
-            subject: "Your Rocket Press Wire Order Is Completed 🚀",
+            subject: "Your Rocket PressWire Order Is Completed 🚀",
             text: buildCompletionTextEmail(data, portalUrl),
             html: buildCompletionHtmlEmail(data, portalUrl),
         })

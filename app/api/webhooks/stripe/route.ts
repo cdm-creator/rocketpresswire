@@ -358,18 +358,20 @@ export async function POST(request: Request) {
             priceResults.reduce((total, { unitAmount }) => total + unitAmount, 0)
         const emailCurrency = session.currency ?? "usd"
 
-        try {
-            await sendAdminNewOrderEmail({
-                orderNumber: order.order_number,
-                customerName,
-                customerEmail,
-                source: "stripe",
-                products: emailProducts,
-                totalAmount: emailTotalAmount,
-                currency: emailCurrency,
-            })
-        } catch (emailError) {
-            console.error("Admin notification email failed:", emailError)
+        if (session.payment_status === "paid") {
+            try {
+                await sendAdminNewOrderEmail({
+                    orderNumber: order.order_number,
+                    customerName,
+                    customerEmail,
+                    source: "stripe",
+                    products: emailProducts,
+                    totalAmount: emailTotalAmount,
+                    currency: emailCurrency,
+                })
+            } catch (emailError) {
+                console.error("Admin notification email failed:", emailError)
+            }
         }
 
         try {
