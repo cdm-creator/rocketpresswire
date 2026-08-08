@@ -70,10 +70,6 @@ function buildTextEmail(
     portalUrl: string
 ) {
     const products = data.products.map((product) => `- ${formatProduct(product)}`)
-    const invoiceMessage = data.invoicePdfUrl
-        ? ["", "Your Stripe invoice PDF is attached to this email."]
-        : []
-
     return [
         "ROCKET PRESSWIRE",
         "",
@@ -85,7 +81,6 @@ function buildTextEmail(
         "",
         "Your payment was successful and your order has been confirmed.",
         "Our team will begin processing your distribution before that please submit your press release content.",
-        ...invoiceMessage,
         "",
         "ORDER SUMMARY",
         "",
@@ -106,7 +101,7 @@ function buildTextEmail(
         "You can track your campaign progress, publication status,",
         "and available placement links from your Customer Portal.",
         "",
-        "View Customer Portal:",
+        "Go to Your Dashboard:",
         portalUrl,
         "",
         "Thank you for your order.",
@@ -151,7 +146,6 @@ function buildHtmlEmail(
                     getGreeting(data.customerName)
                 )}</p>
                 <p style="margin:0;color:#aaa4bd;font-size:16px;line-height:1.55;">Thank you for choosing Rocket PressWire. Your payment was successful and your order has been confirmed. Our team will begin processing your distribution before that please submit your press release content.</p>
-                ${data.invoicePdfUrl ? '<p style="margin:14px 0 0;color:#aaa4bd;font-size:16px;line-height:1.55;">Your Stripe invoice PDF is attached to this email.</p>' : ""}
               </td>
             </tr>
             <tr>
@@ -178,7 +172,7 @@ function buildHtmlEmail(
             </tr>
             <tr>
               <td style="padding:24px 28px 12px;">
-                <a href="${escapeHtml(portalUrl)}" style="display:inline-block;background:#765eff;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 20px;border-radius:8px;">View Customer Portal</a>
+                <a href="${escapeHtml(portalUrl)}" style="display:inline-block;background:#765eff;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 20px;border-radius:8px;">Go to Your Dashboard</a>
               </td>
             </tr>
             <tr>
@@ -343,15 +337,6 @@ export async function sendCustomerOrderConfirmationEmail(
             subject: `Your Rocket PressWire Order Is Confirmed - ${data.orderNumber}`,
             text: buildTextEmail(data, portalUrl),
             html: buildHtmlEmail(data, portalUrl),
-            attachments: data.invoicePdfUrl
-                ? [
-                      {
-                          filename: `Rocket-PressWire-Invoice-${data.orderNumber.replace(/[^a-zA-Z0-9_-]+/g, "-")}.pdf`,
-                          path: data.invoicePdfUrl,
-                          contentType: "application/pdf",
-                      },
-                  ]
-                : undefined,
         })
 
         console.log("CUSTOMER CONFIRMATION EMAIL SENT", {
