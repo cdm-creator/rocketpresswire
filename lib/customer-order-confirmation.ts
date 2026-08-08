@@ -84,7 +84,7 @@ function buildTextEmail(
         "Thank you for choosing Rocket PressWire.",
         "",
         "Your payment was successful and your order has been confirmed.",
-        "Our team will begin processing your distribution campaign.",
+        "Our team will begin processing your distribution before that please submit your press release content.",
         ...invoiceMessage,
         "",
         "ORDER SUMMARY",
@@ -150,7 +150,7 @@ function buildHtmlEmail(
                 <p style="margin:0 0 14px;color:#ffffff;font-size:16px;line-height:1.55;">${escapeHtml(
                     getGreeting(data.customerName)
                 )}</p>
-                <p style="margin:0;color:#aaa4bd;font-size:16px;line-height:1.55;">Thank you for choosing Rocket PressWire. Your payment was successful and your order has been confirmed. Our team will begin processing your distribution campaign.</p>
+                <p style="margin:0;color:#aaa4bd;font-size:16px;line-height:1.55;">Thank you for choosing Rocket PressWire. Your payment was successful and your order has been confirmed. Our team will begin processing your distribution before that please submit your press release content.</p>
                 ${data.invoicePdfUrl ? '<p style="margin:14px 0 0;color:#aaa4bd;font-size:16px;line-height:1.55;">Your Stripe invoice PDF is attached to this email.</p>' : ""}
               </td>
             </tr>
