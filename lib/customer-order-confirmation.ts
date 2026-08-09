@@ -15,7 +15,6 @@ type CustomerOrderConfirmationEmailData = {
     totalAmount: number
     currency: string
     source?: string
-    invoicePdfUrl?: string | null
 }
 
 type CustomerOrderCompletionEmailData = {

@@ -2,7 +2,6 @@ import type Stripe from "stripe"
 
 import { sendAdminNewOrderEmail } from "@/lib/admin-order-notification"
 import { sendCustomerOrderConfirmationEmail } from "@/lib/customer-order-confirmation"
-import { getCheckoutInvoicePdfUrl } from "@/lib/stripe-invoice"
 import {
     addExpectedDays,
     getProductDeliveryBySlug,
@@ -358,32 +357,6 @@ export async function POST(request: Request) {
             session.amount_total ??
             priceResults.reduce((total, { unitAmount }) => total + unitAmount, 0)
         const emailCurrency = session.currency ?? "usd"
-        let invoicePdfUrl: string | null = null
-
-        try {
-            invoicePdfUrl = await getCheckoutInvoicePdfUrl(stripe, session)
-
-            if (session.payment_status === "paid" && !invoicePdfUrl) {
-                console.warn("[stripe-webhook] Paid Checkout invoice PDF is unavailable", {
-                    eventId: event.id,
-                    sessionId,
-                    invoiceId:
-                        typeof session.invoice === "string"
-                            ? session.invoice
-                            : session.invoice?.id ?? null,
-                })
-            }
-        } catch (invoiceError) {
-            console.error("[stripe-webhook] Failed to retrieve invoice PDF", {
-                eventId: event.id,
-                sessionId,
-                error:
-                    invoiceError instanceof Error
-                        ? invoiceError.message
-                        : String(invoiceError),
-            })
-        }
-
         if (session.payment_status === "paid") {
             try {
                 await sendAdminNewOrderEmail({
@@ -409,7 +382,6 @@ export async function POST(request: Request) {
                 totalAmount: emailTotalAmount,
                 currency: emailCurrency,
                 source: "stripe",
-                invoicePdfUrl,
             })
         } catch (emailError) {
             console.error("Customer confirmation email failed:", emailError)
