@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.0",
+    "exceljs": "^4.4.0",
     "googleapis": "^173.0.0",
     "next": "^15.0.0",
     "nodemailer": "^9.0.3",
