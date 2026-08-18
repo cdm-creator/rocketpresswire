@@ -5,6 +5,8 @@ export const COVERAGE_BOOST_IDS = ["morningstar", "apple_news", "big_news_networ
 export const DISTRIBUTION_PRODUCT_IDS = [
   "usa_today", "benzinga", "associated_press", "business_insider", "barchart",
   "yahoo_finance", "msn", "ai_journal", "reuters", "techbullion", "hackernoon",
+  "investing_com", "streetinsider", "digital_journal", "usa_wire", "ny_weekly",
+  "london_daily_news",
   "dummy",
 ] as const
 
@@ -30,6 +32,12 @@ export const PRODUCT_PRICE_MAP = {
   reuters: "price_1TvrzPIgy8kc6qIKzelV6teu",
   techbullion: "price_1Tvs10Igy8kc6qIKToEhzkAt",
   hackernoon: "price_1Tvs1UIgy8kc6qIKBdhxeDw4",
+  investing_com: "price_1U5iY1Igy8kc6qIKuVhS2Kad",
+  streetinsider: "price_1U5iYnIgy8kc6qIKR6UCwXgu",
+  digital_journal: "price_1U5iZMIgy8kc6qIKREmv7JS3",
+  usa_wire: "price_1U5iaEIgy8kc6qIKzapO1YBA",
+  ny_weekly: "price_1U5iakIgy8kc6qIKU8ms1zEs",
+  london_daily_news: "price_1U5ibEIgy8kc6qIKglBzMl4X",
   dummy: "price_1Tvz1eIgy8kc6qIK2zdQY0S2",
 } as const satisfies Record<ProductId, string>
 
@@ -40,6 +48,9 @@ export const PRODUCT_NAME_MAP = {
   business_insider: "Business Insider", barchart: "Barchart", yahoo_finance: "Yahoo Finance",
   msn: "MSN", ai_journal: "AI Journal", reuters: "Reuters", techbullion: "TechBullion",
   hackernoon: "HackerNoon",
+  investing_com: "Investing.com", streetinsider: "StreetInsider",
+  digital_journal: "Digital Journal", usa_wire: "USA Wire", ny_weekly: "NY Weekly",
+  london_daily_news: "London Daily News",
   dummy: "Dummy",
 } as const satisfies Record<ProductId, string>
 
