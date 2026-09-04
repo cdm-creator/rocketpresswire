@@ -5,7 +5,9 @@ import { validatePackageSelection } from "@/lib/package-addon-rules"
 import {
     isPaidWritingOption,
     isProductId,
+    PACKAGE_IDS,
     PRODUCT_PRICE_MAP,
+    type PaidWritingOption,
     type ProductId,
     WRITING_OPTION_PRICE_MAP,
 } from "@/lib/products"
@@ -20,6 +22,10 @@ const corsHeaders = {
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
 }
+
+const PACKAGE_CART_WRITING_PRODUCT_MAP = {
+    journalist_writing: "journalist",
+} as const satisfies Record<string, PaidWritingOption>
 
 function buildDeliveryMetadata(
     value: unknown,
@@ -69,9 +75,24 @@ export async function POST(request: Request) {
             )
         }
 
-        const uniqueItems = [
+        const requestedItemIds = [
             ...new Set(items.map((productId) => String(productId).trim())),
         ]
+
+        const isPackageCart = requestedItemIds.some((id) =>
+            PACKAGE_IDS.some((packageId) => packageId === id)
+        )
+        const packageWritingProductId = isPackageCart
+            ? requestedItemIds.find((id) =>
+                  Object.prototype.hasOwnProperty.call(
+                      PACKAGE_CART_WRITING_PRODUCT_MAP,
+                      id
+                  )
+              )
+            : undefined
+        const uniqueItems = packageWritingProductId
+            ? requestedItemIds.filter((id) => id !== packageWritingProductId)
+            : requestedItemIds
 
         const invalidProductId = uniqueItems.find((id) => !isProductId(id))
 
@@ -86,10 +107,13 @@ export async function POST(request: Request) {
             throw new Error("Invalid package/outlet combination.")
         }
 
-        const writingOption =
-            body.writingOption === undefined
-                ? undefined
-                : String(body.writingOption).trim()
+        const writingOption = packageWritingProductId
+            ? PACKAGE_CART_WRITING_PRODUCT_MAP[
+                  packageWritingProductId as keyof typeof PACKAGE_CART_WRITING_PRODUCT_MAP
+              ]
+            : body.writingOption === undefined
+              ? undefined
+              : String(body.writingOption).trim()
 
         if (
             writingOption !== undefined &&
