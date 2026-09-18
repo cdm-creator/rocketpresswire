@@ -38,6 +38,49 @@ function jsonResponse(body: unknown, status: number) {
     return Response.json(body, { status, headers: corsHeaders })
 }
 
+type SupabaseErrorShape = {
+    message?: string
+    code?: string
+    details?: string
+    hint?: string
+}
+
+function databaseErrorResponse(stage: string, error: SupabaseErrorShape) {
+    const diagnostic = {
+        stage,
+        message: error.message || "Unknown Supabase error",
+        code: error.code || null,
+        details: error.details || null,
+        hint: error.hint || null,
+    }
+
+    console.error("[free-releases] Supabase error", diagnostic)
+
+    return jsonResponse(
+        {
+            error: diagnostic.message,
+            debug: diagnostic,
+        },
+        500
+    )
+}
+
+function unexpectedErrorResponse(stage: string, error: unknown) {
+    const candidate =
+        typeof error === "object" && error !== null
+            ? (error as SupabaseErrorShape)
+            : {}
+
+    return databaseErrorResponse(stage, {
+        message:
+            candidate.message ||
+            (error instanceof Error ? error.message : String(error)),
+        code: candidate.code,
+        details: candidate.details,
+        hint: candidate.hint,
+    })
+}
+
 function getBearerToken(request: Request) {
     const authorization = request.headers.get("authorization")
 
@@ -233,6 +276,11 @@ export async function POST(request: Request) {
 
         if (response) return response
 
+        console.info("[free-releases] Authenticated user", {
+            id: user.id,
+            email: user.email ?? null,
+        })
+
         const userEmail = user.email?.trim().toLowerCase()
 
         if (!userEmail) {
@@ -247,11 +295,10 @@ export async function POST(request: Request) {
                 .maybeSingle()
 
         if (existingError) {
-            console.error("[free-releases] Failed to check existing release", {
-                userId: user.id,
-                error: existingError.message,
-            })
-            return jsonResponse({ error: "Server error" }, 500)
+            return databaseErrorResponse(
+                "check-existing-release",
+                existingError
+            )
         }
 
         if (existingRelease) {
@@ -269,6 +316,8 @@ export async function POST(request: Request) {
             return jsonResponse({ error: "Invalid body" }, 400)
         }
 
+        console.info("[free-releases] Incoming request payload", body)
+
         const insert = buildFreeReleaseInsert(body, userEmail, user.id)
 
         if (!insert) {
@@ -278,14 +327,41 @@ export async function POST(request: Request) {
         // A retry protects sequential ID allocation when simultaneous requests
         // compete for the same release_id and the table's unique key rejects one.
         for (let attempt = 0; attempt < 5; attempt += 1) {
-            const releaseId = await generateFreeReleaseId()
+            let releaseId: string
+
+            try {
+                releaseId = await generateFreeReleaseId()
+            } catch (error) {
+                return unexpectedErrorResponse("generate-release-id", error)
+            }
+            const finalInsert = {
+                release_id: releaseId,
+                user_id: user.id,
+                user_email: insert.user_email,
+                website_url: insert.website_url,
+                title: insert.title,
+                summary: insert.summary,
+                featured_image_url: insert.featured_image_url,
+                content: insert.content,
+                categories: insert.categories,
+                contact_name: insert.contact_name,
+                contact_email: insert.contact_email,
+                seo_title: insert.seo_title,
+                keywords: insert.keywords,
+                meta_description: insert.meta_description,
+                writing_option: "own",
+                status: "Submitted",
+                admin_status: "Submitted",
+            }
+
+            console.info(
+                "[free-releases] Final Supabase insert object",
+                finalInsert
+            )
+
             const { data, error } = await supabaseAdmin
                 .from("free_releases")
-                .insert({
-                    ...insert,
-                    release_id: releaseId,
-                    user_id: user.id,
-                })
+                .insert(finalInsert)
                 .select("*")
                 .single()
 
@@ -320,11 +396,7 @@ export async function POST(request: Request) {
                 continue
             }
 
-            console.error("[free-releases] Failed to create free release", {
-                userId: user.id,
-                error: error.message,
-            })
-            return jsonResponse({ error: "Server error" }, 500)
+            return databaseErrorResponse("insert-free-release", error)
         }
 
         console.error("[free-releases] Exhausted release ID retries", {
@@ -332,9 +404,6 @@ export async function POST(request: Request) {
         })
         return jsonResponse({ error: "Server error" }, 500)
     } catch (error) {
-        console.error("[free-releases] Server error", {
-            error: error instanceof Error ? error.message : "Unknown error",
-        })
-        return jsonResponse({ error: "Server error" }, 500)
+        return unexpectedErrorResponse("free-release-post", error)
     }
 }
