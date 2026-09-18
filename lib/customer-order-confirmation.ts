@@ -23,6 +23,15 @@ type CustomerOrderCompletionEmailData = {
     customerEmail: string
 }
 
+export type FreeReleaseCompletionEmailData = {
+    customerName?: string | null
+    customerEmail: string
+    releaseId: string
+    releaseTitle: string
+    publishedUrl?: string | null
+    reportFile?: string | null
+}
+
 let transporter: nodemailer.Transporter<SMTPTransport.SentMessageInfo> | null =
     null
 
@@ -280,6 +289,106 @@ function buildCompletionHtmlEmail(
 </html>`
 }
 
+function buildFreeReleaseCompletionTextEmail(
+    data: FreeReleaseCompletionEmailData,
+    portalUrl: string
+) {
+    return [
+        "ROCKET PRESSWIRE",
+        "",
+        "Your Free Release Has Been Completed",
+        "",
+        getGreeting(data.customerName),
+        "",
+        "Your free press release has been completed successfully.",
+        "",
+        "Release ID:",
+        data.releaseId,
+        "",
+        "Release Title:",
+        data.releaseTitle,
+        "",
+        "Status:",
+        "Completed",
+        ...(data.publishedUrl
+            ? ["", "Published URL:", data.publishedUrl]
+            : []),
+        ...(data.reportFile ? ["", "Report:", data.reportFile] : []),
+        "",
+        "You can access your release details, report, and published URL from your customer portal.",
+        "",
+        "Customer Portal:",
+        portalUrl,
+        "",
+        "Thank you for using Rocket Press Wire.",
+        "",
+        "Rocket PressWire Team",
+    ].join("\n")
+}
+
+function buildFreeReleaseCompletionHtmlEmail(
+    data: FreeReleaseCompletionEmailData,
+    portalUrl: string
+) {
+    const optionalPublishedUrl = data.publishedUrl
+        ? `<p style="margin:12px 0 0;color:#aaa4bd;font-size:15px;line-height:1.55;">Published URL: <a href="${escapeHtml(data.publishedUrl)}" style="color:#b9adff;">View published release</a></p>`
+        : ""
+    const optionalReport = data.reportFile
+        ? `<p style="margin:8px 0 0;color:#aaa4bd;font-size:15px;line-height:1.55;">Report: <a href="${escapeHtml(data.reportFile)}" style="color:#b9adff;">View report</a></p>`
+        : ""
+
+    return `<!doctype html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>Your Free Release Has Been Completed</title>
+  </head>
+  <body style="margin:0;padding:0;background:#07031d;color:#ffffff;font-family:Arial,Helvetica,sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#07031d;margin:0;padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#17102f;border-radius:16px;overflow:hidden;">
+            <tr>
+              <td style="padding:32px 28px 12px;">
+                <div style="font-size:13px;font-weight:700;letter-spacing:2px;color:#9d8eff;">ROCKET PRESSWIRE</div>
+                <h1 style="margin:18px 0 14px;font-size:28px;line-height:1.2;color:#ffffff;">Your Free Release Has Been Completed</h1>
+                <p style="margin:0 0 14px;color:#ffffff;font-size:16px;line-height:1.55;">${escapeHtml(getGreeting(data.customerName))}</p>
+                <p style="margin:0;color:#aaa4bd;font-size:16px;line-height:1.55;">Your free press release has been completed successfully.</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:18px 28px 8px;">
+                ${buildHtmlRow("Release ID", data.releaseId)}
+                ${buildHtmlRow("Release Title", data.releaseTitle)}
+                ${buildHtmlRow("Status", "Completed")}
+                ${optionalPublishedUrl}
+                ${optionalReport}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:18px 28px 8px;">
+                <p style="margin:0;color:#aaa4bd;font-size:15px;line-height:1.55;">You can access your release details, report, and published URL from your customer portal.</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px 28px 12px;">
+                <a href="${escapeHtml(portalUrl)}" style="display:inline-block;background:#765eff;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 20px;border-radius:8px;">Open Customer Portal</a>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:16px 28px 32px;">
+                <p style="margin:0;color:#aaa4bd;font-size:14px;line-height:1.5;">Thank you for using Rocket Press Wire.<br />Rocket PressWire Team</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`
+}
+
 function getTransporter() {
     if (transporter) {
         return transporter
@@ -409,6 +518,57 @@ export async function sendCustomerOrderCompletionEmail(
     } catch (error) {
         console.error("CUSTOMER COMPLETION EMAIL FAILED", {
             orderNumber: data.orderNumber,
+            customerEmail,
+            error: error instanceof Error ? error.message : String(error),
+        })
+
+        throw error
+    }
+}
+
+export async function sendFreeReleaseCompletionEmail(
+    data: FreeReleaseCompletionEmailData
+) {
+    const smtpUser = requireEnv("SMTP_USER")
+    const portalUrl = getPortalUrl()
+    const customerEmail = data.customerEmail.trim().toLowerCase()
+
+    if (!customerEmail) {
+        throw new Error(
+            "[free-release-completion] Customer email is missing."
+        )
+    }
+
+    try {
+        const info = await getTransporter().sendMail({
+            from: {
+                name: "Rocket PressWire",
+                address: smtpUser,
+            },
+            replyTo: smtpUser,
+            to: customerEmail,
+            subject: "Your Free Release Has Been Completed",
+            text: buildFreeReleaseCompletionTextEmail(data, portalUrl),
+            html: buildFreeReleaseCompletionHtmlEmail(data, portalUrl),
+        })
+
+        console.log("FREE RELEASE COMPLETION EMAIL SENT", {
+            releaseId: data.releaseId,
+            customerEmail,
+            messageId: info.messageId,
+            accepted: info.accepted,
+            rejected: info.rejected,
+        })
+
+        return {
+            success: true,
+            messageId: info.messageId,
+            accepted: info.accepted,
+            rejected: info.rejected,
+        }
+    } catch (error) {
+        console.error("FREE RELEASE COMPLETION EMAIL FAILED", {
+            releaseId: data.releaseId,
             customerEmail,
             error: error instanceof Error ? error.message : String(error),
         })

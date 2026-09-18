@@ -6,6 +6,7 @@ import {
     AdminAuthorizationError,
     requireActiveAdmin,
 } from "@/lib/requireActiveAdmin"
+import { sendFreeReleaseCompletionEmail } from "@/lib/customer-order-confirmation"
 import { supabaseAdmin } from "@/lib/supabase-admin"
 
 export const runtime = "nodejs"
@@ -24,6 +25,40 @@ const allowedFields: AllowedField[] = [
     "published_url",
     "report_file",
 ]
+
+type FreeReleaseEmailRow = {
+    id: string
+    status: string
+    user_email: string | null
+    customer_email: string | null
+    contact_email: string | null
+    customer_name: string | null
+    contact_name: string | null
+    release_id: string
+    title: string | null
+    release_title: string | null
+    published_url: string | null
+    report_file: string | null
+}
+
+const freeReleaseEmailFields = [
+    "id",
+    "status",
+    "user_email",
+    "customer_email",
+    "contact_email",
+    "customer_name",
+    "contact_name",
+    "release_id",
+    "title",
+    "release_title",
+    "published_url",
+    "report_file",
+].join(",")
+
+function normalizeStatus(value: unknown) {
+    return typeof value === "string" ? value.trim().toLowerCase() : ""
+}
 
 function jsonResponse(body: unknown, status: number) {
     return Response.json(body, { status, headers: ADMIN_CORS_HEADERS })
@@ -79,12 +114,63 @@ export async function PATCH(request: Request, context: RouteContext) {
             return jsonResponse({ error: "Invalid body" }, 400)
         }
 
-        const { data, error } = await supabaseAdmin
-            .from("free_releases")
-            .update(update)
-            .eq("id", id)
+        const { data: currentRelease, error: currentReleaseError } =
+            await supabaseAdmin
+                .from("free_releases")
+                .select(freeReleaseEmailFields)
+                .eq("id", id)
+                .maybeSingle<FreeReleaseEmailRow>()
+
+        if (currentReleaseError) {
+            console.error(
+                "[admin-free-release-update] Failed to load current release",
+                {
+                    adminEmail: activeAdmin.email,
+                    releaseId: id,
+                    error: currentReleaseError.message,
+                }
+            )
+            return jsonResponse({ error: "Server error" }, 500)
+        }
+
+        if (!currentRelease) {
+            return jsonResponse({ error: "Release not found" }, 404)
+        }
+
+        const transitionedToCompleted =
+            normalizeStatus(currentRelease.status) !== "completed" &&
+            normalizeStatus(update.status) === "completed"
+        let shouldSendCompletionEmail = transitionedToCompleted
+
+        const updateRequest = transitionedToCompleted
+            ? supabaseAdmin
+                  .from("free_releases")
+                  .update(update)
+                  .eq("id", id)
+                  .eq("status", currentRelease.status)
+            : supabaseAdmin
+                  .from("free_releases")
+                  .update(update)
+                  .eq("id", id)
+
+        let { data, error } = await updateRequest
             .select("*")
             .maybeSingle()
+
+        // If two completion requests race, only the compare-and-set winner sends
+        // the email. Apply the latest request once more without sending a duplicate.
+        if (transitionedToCompleted && !error && !data) {
+            shouldSendCompletionEmail = false
+            const retryResult = await supabaseAdmin
+                .from("free_releases")
+                .update(update)
+                .eq("id", id)
+                .select("*")
+                .maybeSingle()
+
+            data = retryResult.data
+            error = retryResult.error
+        }
 
         if (error) {
             console.error("[admin-free-release-update] Failed to update release", {
@@ -97,6 +183,54 @@ export async function PATCH(request: Request, context: RouteContext) {
 
         if (!data) {
             return jsonResponse({ error: "Release not found" }, 404)
+        }
+
+        if (shouldSendCompletionEmail) {
+            const completedRelease = data as FreeReleaseEmailRow
+            const customerEmail =
+                completedRelease.user_email ||
+                completedRelease.contact_email ||
+                completedRelease.customer_email
+
+            if (!customerEmail) {
+                console.error(
+                    "[admin-free-release-update] Completion email skipped: customer email is missing",
+                    {
+                        adminEmail: activeAdmin.email,
+                        releaseId: completedRelease.release_id,
+                    }
+                )
+            } else {
+                try {
+                    await sendFreeReleaseCompletionEmail({
+                        customerName:
+                            completedRelease.customer_name ||
+                            completedRelease.contact_name,
+                        customerEmail,
+                        releaseId: completedRelease.release_id,
+                        releaseTitle:
+                            completedRelease.title ||
+                            completedRelease.release_title ||
+                            "Untitled Release",
+                        publishedUrl: completedRelease.published_url,
+                        reportFile: completedRelease.report_file,
+                    })
+                } catch (emailError) {
+                    // Match the existing completion flow: the status update remains
+                    // successful even when the notification provider is unavailable.
+                    console.error(
+                        "[admin-free-release-update] Completion email failed after release update",
+                        {
+                            adminEmail: activeAdmin.email,
+                            releaseId: completedRelease.release_id,
+                            error:
+                                emailError instanceof Error
+                                    ? emailError.message
+                                    : "Unknown error",
+                        }
+                    )
+                }
+            }
         }
 
         return jsonResponse({ success: true, release: data }, 200)
