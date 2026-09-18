@@ -331,10 +331,20 @@ function buildFreeReleaseCompletionHtmlEmail(
     portalUrl: string
 ) {
     const optionalPublishedUrl = data.publishedUrl
-        ? `<p style="margin:12px 0 0;color:#aaa4bd;font-size:15px;line-height:1.55;">Published URL: <a href="${escapeHtml(data.publishedUrl)}" style="color:#b9adff;">View published release</a></p>`
+        ? `<tr>
+      <td style="padding:12px 0;border-bottom:1px solid #2b2440;">
+        <div style="color:#aaa4bd;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Published URL</div>
+        <div style="margin-top:6px;font-size:15px;line-height:1.55;overflow-wrap:anywhere;word-break:break-word;"><a href="${escapeHtml(data.publishedUrl)}" style="color:#b9adff;text-decoration:underline;">View published release</a></div>
+      </td>
+    </tr>`
         : ""
     const optionalReport = data.reportFile
-        ? `<p style="margin:8px 0 0;color:#aaa4bd;font-size:15px;line-height:1.55;">Report: <a href="${escapeHtml(data.reportFile)}" style="color:#b9adff;">View report</a></p>`
+        ? `<tr>
+      <td style="padding:12px 0;border-bottom:1px solid #2b2440;">
+        <div style="color:#aaa4bd;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Report</div>
+        <div style="margin-top:6px;font-size:15px;line-height:1.55;overflow-wrap:anywhere;word-break:break-word;"><a href="${escapeHtml(data.reportFile)}" style="color:#b9adff;text-decoration:underline;">View report</a></div>
+      </td>
+    </tr>`
         : ""
 
     return `<!doctype html>
@@ -344,31 +354,33 @@ function buildFreeReleaseCompletionHtmlEmail(
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <title>Your Free Release Has Been Completed</title>
   </head>
-  <body style="margin:0;padding:0;background:#07031d;color:#ffffff;font-family:Arial,Helvetica,sans-serif;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#07031d;margin:0;padding:32px 16px;">
+  <body style="margin:0;padding:0;background:#07031d;color:#ffffff;font-family:Arial,Helvetica,sans-serif;-webkit-text-size-adjust:100%;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#07031d;margin:0;border-collapse:collapse;table-layout:fixed;">
       <tr>
-        <td align="center">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#17102f;border-radius:16px;overflow:hidden;">
+        <td align="center" style="padding:32px 16px;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:640px;background:#17102f;border-collapse:separate;border-spacing:0;border-radius:16px;overflow:hidden;">
             <tr>
               <td style="padding:32px 28px 12px;">
                 <div style="font-size:13px;font-weight:700;letter-spacing:2px;color:#9d8eff;">ROCKET PRESSWIRE</div>
-                <h1 style="margin:18px 0 14px;font-size:28px;line-height:1.2;color:#ffffff;">Your Free Release Has Been Completed</h1>
+                <h1 style="margin:18px 0 14px;font-size:27px;line-height:1.25;color:#ffffff;overflow-wrap:anywhere;word-break:break-word;">Your Free Release Has Been Completed</h1>
                 <p style="margin:0 0 14px;color:#ffffff;font-size:16px;line-height:1.55;">${escapeHtml(getGreeting(data.customerName))}</p>
                 <p style="margin:0;color:#aaa4bd;font-size:16px;line-height:1.55;">Your free press release has been completed successfully.</p>
               </td>
             </tr>
             <tr>
               <td style="padding:18px 28px 8px;">
-                ${buildHtmlRow("Release ID", data.releaseId)}
-                ${buildHtmlRow("Release Title", data.releaseTitle)}
-                ${buildHtmlRow("Status", "Completed")}
-                ${optionalPublishedUrl}
-                ${optionalReport}
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;table-layout:fixed;">
+                  ${buildHtmlRow("Release ID", data.releaseId)}
+                  ${buildHtmlRow("Release Title", data.releaseTitle)}
+                  ${buildHtmlRow("Status", "Completed")}
+                  ${optionalPublishedUrl}
+                  ${optionalReport}
+                </table>
               </td>
             </tr>
             <tr>
               <td style="padding:18px 28px 8px;">
-                <p style="margin:0;color:#aaa4bd;font-size:15px;line-height:1.55;">You can access your release details, report, and published URL from your customer portal.</p>
+                <p style="margin:0;color:#aaa4bd;font-size:15px;line-height:1.55;overflow-wrap:anywhere;word-break:break-word;">You can access your release details, report, and published URL from your customer portal.</p>
               </td>
             </tr>
             <tr>
