@@ -1,5 +1,6 @@
 import { generateFreeReleaseId } from "@/lib/free-release-id"
 import { sanitizePressReleaseHtml } from "@/lib/sanitizePressReleaseHtml"
+import { normalizeSourceDocumentMetadata } from "@/lib/source-document"
 import { supabaseAdmin } from "@/lib/supabase-admin"
 
 export const runtime = "nodejs"
@@ -88,7 +89,11 @@ function stringArray(value: unknown) {
     return value.map((item) => item.trim()).filter(Boolean)
 }
 
-function buildFreeReleaseInsert(body: RequestBody, userEmail: string) {
+function buildFreeReleaseInsert(
+    body: RequestBody,
+    userEmail: string,
+    userId: string
+) {
     const websiteUrl = requiredString(body.website_url)
     const title = requiredString(body.title)
     const summary = requiredString(body.summary)
@@ -103,20 +108,10 @@ function buildFreeReleaseInsert(body: RequestBody, userEmail: string) {
     const seoTitle = optionalString(body.seo_title)
     const keywords = optionalString(body.keywords)
     const metaDescription = optionalString(body.meta_description)
-    const sourceDocumentPath = optionalString(body.source_document_path)
-    const sourceDocumentName = optionalString(body.source_document_name)
-    const sourceDocumentMimeType = optionalString(
-        body.source_document_mime_type
+    const sourceDocumentMetadata = normalizeSourceDocumentMetadata(
+        body,
+        userId
     )
-    const sourceDocumentSizeBytes =
-        body.source_document_size_bytes === undefined ||
-        body.source_document_size_bytes === null
-            ? null
-            : typeof body.source_document_size_bytes === "number" &&
-                Number.isFinite(body.source_document_size_bytes) &&
-                body.source_document_size_bytes > 0
-              ? body.source_document_size_bytes
-              : undefined
 
     if (
         !websiteUrl ||
@@ -133,15 +128,13 @@ function buildFreeReleaseInsert(body: RequestBody, userEmail: string) {
         seoTitle === undefined ||
         keywords === undefined ||
         metaDescription === undefined ||
-        sourceDocumentPath === undefined ||
-        sourceDocumentName === undefined ||
-        sourceDocumentMimeType === undefined ||
-        sourceDocumentSizeBytes === undefined
+        !sourceDocumentMetadata
     ) {
         return null
     }
 
     return {
+        user_email: userEmail,
         customer_name: contactName,
         customer_email: userEmail,
         website_url: websiteUrl,
@@ -158,10 +151,7 @@ function buildFreeReleaseInsert(body: RequestBody, userEmail: string) {
         seo_title: seoTitle,
         keywords,
         meta_description: metaDescription,
-        source_document_path: sourceDocumentPath,
-        source_document_name: sourceDocumentName,
-        source_document_mime_type: sourceDocumentMimeType,
-        source_document_size_bytes: sourceDocumentSizeBytes,
+        ...sourceDocumentMetadata,
         writing_option: "own",
         status: "Submitted",
         admin_status: "Submitted",
@@ -199,15 +189,6 @@ function normalizeFreeRelease(row: Record<string, any> | null) {
         keywords: row.keywords ?? null,
         meta_description: row.meta_description ?? null,
     }
-}
-
-function isSchemaCompatibilityError(error: { code?: string; message?: string }) {
-    return (
-        error.code === "PGRST204" ||
-        error.code === "42703" ||
-        error.code === "23502" ||
-        String(error.message || "").toLowerCase().includes("column")
-    )
 }
 
 export async function OPTIONS() {
@@ -288,7 +269,7 @@ export async function POST(request: Request) {
             return jsonResponse({ error: "Invalid body" }, 400)
         }
 
-        const insert = buildFreeReleaseInsert(body, userEmail)
+        const insert = buildFreeReleaseInsert(body, userEmail, user.id)
 
         if (!insert) {
             return jsonResponse({ error: "Invalid body" }, 400)
@@ -298,58 +279,15 @@ export async function POST(request: Request) {
         // compete for the same release_id and the table's unique key rejects one.
         for (let attempt = 0; attempt < 5; attempt += 1) {
             const releaseId = await generateFreeReleaseId()
-            let { data, error } = await supabaseAdmin
+            const { data, error } = await supabaseAdmin
                 .from("free_releases")
                 .insert({
+                    ...insert,
                     release_id: releaseId,
                     user_id: user.id,
-                    customer_name: insert.contact_name,
-                    customer_email: userEmail,
-                    website_url: insert.website_url,
-                    title: insert.title,
-                    summary: insert.summary,
-                    featured_image_url: insert.featured_image_url,
-                    content: insert.content,
-                    categories: insert.categories,
-                    contact_name: insert.contact_name,
-                    contact_email: insert.contact_email,
-                    seo_title: insert.seo_title,
-                    keywords: insert.keywords,
-                    meta_description: insert.meta_description,
-                    writing_option: "own",
-                    status: "Submitted",
-                    admin_status: "Submitted",
                 })
                 .select("*")
                 .single()
-
-            if (error && isSchemaCompatibilityError(error)) {
-                const legacyResult = await supabaseAdmin
-                    .from("free_releases")
-                    .insert({
-                        release_id: releaseId,
-                        user_id: user.id,
-                        customer_name: insert.contact_name,
-                        customer_email: userEmail,
-                        release_title: insert.title,
-                        subtitle: insert.summary,
-                        company_name: insert.company,
-                        contact_information:
-                            insert.full_address || insert.phone || userEmail,
-                        release_content: insert.content,
-                        media_files: insert.featured_image_url
-                            ? [insert.featured_image_url]
-                            : [],
-                        writing_option: "own",
-                        status: "Submitted",
-                        admin_status: "Submitted",
-                    })
-                    .select("*")
-                    .single()
-
-                data = legacyResult.data
-                error = legacyResult.error
-            }
 
             if (!error) {
                 return jsonResponse(
