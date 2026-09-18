@@ -15,6 +15,24 @@ function jsonResponse(body: unknown, status: number) {
     return Response.json(body, { status, headers: ADMIN_CORS_HEADERS })
 }
 
+function normalizeAdminFreeRelease(row: Record<string, any>) {
+    return {
+        ...row,
+        release_title: row.release_title ?? row.title ?? "",
+        subtitle: row.subtitle ?? row.summary ?? null,
+        company_name: row.company_name ?? row.company ?? null,
+        contact_information:
+            row.contact_information ??
+            [row.contact_name, row.contact_email, row.phone, row.full_address]
+                .filter(Boolean)
+                .join(" | ") ??
+            null,
+        release_content: row.release_content ?? row.content ?? "",
+        customer_name: row.customer_name ?? row.contact_name ?? "",
+        customer_email: row.customer_email ?? row.contact_email ?? "",
+    }
+}
+
 export async function OPTIONS() {
     return adminOptionsResponse()
 }
@@ -24,28 +42,7 @@ export async function GET(request: Request) {
         const activeAdmin = await requireActiveAdmin(request)
         const { data, error } = await supabaseAdmin
             .from("free_releases")
-            .select(
-                `
-                id,
-                release_id,
-                user_id,
-                customer_name,
-                customer_email,
-                release_title,
-                subtitle,
-                company_name,
-                contact_information,
-                release_content,
-                media_files,
-                writing_option,
-                status,
-                admin_status,
-                published_url,
-                report_file,
-                created_at,
-                updated_at
-            `
-            )
+            .select("*")
             .order("created_at", { ascending: false })
 
         if (error) {
@@ -62,7 +59,11 @@ export async function GET(request: Request) {
                     email: activeAdmin.email,
                     name: activeAdmin.admin.name,
                 },
-                releases: data ?? [],
+                releases: (data ?? []).map((release) =>
+                    normalizeAdminFreeRelease(
+                        release as Record<string, any>
+                    )
+                ),
             },
             200
         )
