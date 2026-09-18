@@ -334,10 +334,44 @@ export async function POST(request: Request) {
             } catch (error) {
                 return unexpectedErrorResponse("generate-release-id", error)
             }
+
+            const mediaFiles = [
+                ...(insert.featured_image_url
+                    ? [
+                          {
+                              type: "featured_image",
+                              url: insert.featured_image_url,
+                          },
+                      ]
+                    : []),
+                ...(insert.source_document_path
+                    ? [
+                          {
+                              type: "source_document",
+                              path: insert.source_document_path,
+                              name: insert.source_document_name,
+                              mime_type: insert.source_document_mime_type,
+                              size_bytes: insert.source_document_size_bytes,
+                          },
+                      ]
+                    : []),
+            ]
+
+            const contactInformation = [
+                insert.contact_name,
+                insert.contact_email,
+                insert.phone,
+                insert.full_address,
+            ]
+                .filter(Boolean)
+                .join(" | ")
+
             const finalInsert = {
                 release_id: releaseId,
                 user_id: user.id,
                 user_email: insert.user_email,
+                customer_name: insert.contact_name,
+                customer_email: insert.contact_email,
                 website_url: insert.website_url,
                 title: insert.title,
                 summary: insert.summary,
@@ -349,6 +383,12 @@ export async function POST(request: Request) {
                 seo_title: insert.seo_title,
                 keywords: insert.keywords,
                 meta_description: insert.meta_description,
+                release_title: insert.title,
+                subtitle: insert.summary,
+                company_name: insert.company,
+                contact_information: contactInformation || null,
+                release_content: insert.content,
+                media_files: mediaFiles,
                 writing_option: "own",
                 status: "Submitted",
                 admin_status: "Submitted",
