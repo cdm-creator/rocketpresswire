@@ -1,5 +1,9 @@
 import { supabaseAdmin } from "@/lib/supabase-admin"
 import { sendAdminReleaseSubmissionEmail } from "@/lib/admin-release-notification"
+import {
+    consumeReleaseEmailVerification,
+    validateReleaseContactEmail,
+} from "@/lib/release-contact-email"
 import { sanitizePressReleaseHtml } from "@/lib/sanitizePressReleaseHtml"
 import { normalizeSourceDocumentMetadata } from "@/lib/source-document"
 
@@ -551,6 +555,31 @@ export async function POST(request: Request) {
 
         if (selectedOutletIds.some((id) => usedOutletIds.has(id))) {
             return selectedOutletsAlreadySubmittedResponse()
+        }
+
+        if (isFinalSubmittedStatus(releaseInsert.status)) {
+            const contactEmailValidation = validateReleaseContactEmail(
+                releaseInsert.contact_email,
+                "paid"
+            )
+
+            if (contactEmailValidation.error) {
+                return badRequestResponse(contactEmailValidation.error)
+            }
+
+            releaseInsert.contact_email = contactEmailValidation.email
+
+            const emailVerified = await consumeReleaseEmailVerification(
+                userId,
+                "paid",
+                releaseInsert.contact_email
+            )
+
+            if (!emailVerified) {
+                return badRequestResponse(
+                    "Please verify your contact email before submitting."
+                )
+            }
         }
 
         const { data, error } = await supabaseAdmin

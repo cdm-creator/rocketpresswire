@@ -1,4 +1,8 @@
 import { generateFreeReleaseId } from "@/lib/free-release-id"
+import {
+    consumeReleaseEmailVerification,
+    validateReleaseContactEmail,
+} from "@/lib/release-contact-email"
 import { sanitizePressReleaseHtml } from "@/lib/sanitizePressReleaseHtml"
 import { normalizeSourceDocumentMetadata } from "@/lib/source-document"
 import { supabaseAdmin } from "@/lib/supabase-admin"
@@ -322,6 +326,30 @@ export async function POST(request: Request) {
 
         if (!insert) {
             return jsonResponse({ error: "Invalid body" }, 400)
+        }
+
+        const contactEmailValidation = validateReleaseContactEmail(
+            insert.contact_email,
+            "free"
+        )
+
+        if (contactEmailValidation.error) {
+            return jsonResponse({ error: contactEmailValidation.error }, 400)
+        }
+
+        insert.contact_email = contactEmailValidation.email
+
+        const emailVerified = await consumeReleaseEmailVerification(
+            user.id,
+            "free",
+            insert.contact_email
+        )
+
+        if (!emailVerified) {
+            return jsonResponse(
+                { error: "Please verify your contact email before submitting." },
+                400
+            )
         }
 
         // A retry protects sequential ID allocation when simultaneous requests
