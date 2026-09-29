@@ -15,6 +15,8 @@ const DEFAULT_PAGE = 1
 const DEFAULT_LIMIT = 12
 const MAX_LIMIT = 50
 const MAX_SEARCH_LENGTH = 100
+const FULL_DATASET_CHUNK_SIZE = 1000
+const MAX_FULL_DATASET_SIZE = 100_000
 const LIST_FIELDS =
     "release_id,title,user_email,status,admin_status,created_at,published_url"
 
@@ -119,6 +121,7 @@ export async function GET(request: Request) {
         )
         const search = sanitizeSearch(searchParams.get("search"))
         const status = normalizeStatus(searchParams.get("status") || "all")
+        const loadAll = searchParams.get("all") === "true"
 
         if (
             page === null ||
@@ -141,7 +144,7 @@ export async function GET(request: Request) {
         const listQuery = applyListFilters(
             supabaseAdmin
                 .from("free_releases")
-                .select(LIST_FIELDS, { count: "exact" }),
+                .select(loadAll ? "*" : LIST_FIELDS, { count: "exact" }),
             search,
             status
         )
@@ -161,7 +164,12 @@ export async function GET(request: Request) {
             { count: processing, error: processingError },
             { count: completed, error: completedError },
         ] = await Promise.all([
-            listQuery.order("created_at", { ascending: false }).range(from, to),
+            listQuery
+                .order("created_at", { ascending: false })
+                .range(
+                    loadAll ? 0 : from,
+                    loadAll ? FULL_DATASET_CHUNK_SIZE - 1 : to
+                ),
             summaryCountQuery(),
             summaryCountQuery("pending"),
             summaryCountQuery("processing"),
@@ -180,18 +188,74 @@ export async function GET(request: Request) {
         }
 
         const total = count ?? 0
-        const totalPages = Math.max(1, Math.ceil(total / limit))
+        let releases = data ?? []
+
+        if (loadAll && total > MAX_FULL_DATASET_SIZE) {
+            console.error(
+                "[admin-free-releases] Full dataset limit exceeded",
+                {
+                    adminEmail: activeAdmin.email,
+                    total,
+                    maximum: MAX_FULL_DATASET_SIZE,
+                }
+            )
+            return jsonResponse(
+                { error: "Unable to load free releases" },
+                503
+            )
+        }
+
+        if (loadAll && releases.length < total) {
+            for (
+                let chunkStart = FULL_DATASET_CHUNK_SIZE;
+                chunkStart < total;
+                chunkStart += FULL_DATASET_CHUNK_SIZE
+            ) {
+                const chunkQuery = applyListFilters(
+                    supabaseAdmin.from("free_releases").select("*"),
+                    search,
+                    status
+                )
+                const { data: chunk, error: chunkError } = await chunkQuery
+                    .order("created_at", { ascending: false })
+                    .range(
+                        chunkStart,
+                        Math.min(
+                            chunkStart + FULL_DATASET_CHUNK_SIZE - 1,
+                            total - 1
+                        )
+                    )
+
+                if (chunkError) {
+                    console.error(
+                        "[admin-free-releases] Failed to query full release dataset",
+                        {
+                            adminEmail: activeAdmin.email,
+                            error: chunkError.message,
+                        }
+                    )
+                    return jsonResponse({ error: "Server error" }, 500)
+                }
+
+                releases = [...releases, ...(chunk ?? [])]
+            }
+        }
+
+        const responseLimit = loadAll ? Math.max(total, 1) : limit
+        const totalPages = loadAll
+            ? 1
+            : Math.max(1, Math.ceil(total / responseLimit))
 
         return jsonResponse(
             {
-                releases: data ?? [],
+                releases,
                 pagination: {
-                    page,
-                    limit,
+                    page: loadAll ? 1 : page,
+                    limit: responseLimit,
                     total,
                     totalPages,
-                    hasNextPage: page < totalPages,
-                    hasPreviousPage: page > 1,
+                    hasNextPage: loadAll ? false : page < totalPages,
+                    hasPreviousPage: loadAll ? false : page > 1,
                 },
                 summary: {
                     total: summaryTotal ?? 0,

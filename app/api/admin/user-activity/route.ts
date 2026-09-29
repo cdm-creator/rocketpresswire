@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic"
 
 const DEFAULT_PAGE = 1
 const DEFAULT_LIMIT = 12
-const MAX_LIMIT = 50
+const MAX_LIMIT = 100_000
 const AUTH_PAGE_SIZE = 1000
 const MAX_AUTH_PAGES = 100
 
