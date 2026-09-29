@@ -4,6 +4,7 @@ import {
     validateReleaseContactEmail,
 } from "@/lib/release-contact-email"
 import { sanitizePressReleaseHtml } from "@/lib/sanitizePressReleaseHtml"
+import { getPressReleaseWordError } from "@/lib/press-release-content"
 import { normalizeSourceDocumentMetadata } from "@/lib/source-document"
 import { supabaseAdmin } from "@/lib/supabase-admin"
 
@@ -326,6 +327,12 @@ export async function POST(request: Request) {
 
         if (!insert) {
             return jsonResponse({ error: "Invalid body" }, 400)
+        }
+
+        const contentWordError = getPressReleaseWordError(body.content)
+
+        if (contentWordError) {
+            return jsonResponse({ error: contentWordError }, 400)
         }
 
         const contactEmailValidation = validateReleaseContactEmail(

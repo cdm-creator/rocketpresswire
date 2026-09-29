@@ -5,6 +5,7 @@ import {
     validateReleaseContactEmail,
 } from "@/lib/release-contact-email"
 import { sanitizePressReleaseHtml } from "@/lib/sanitizePressReleaseHtml"
+import { getPressReleaseWordError } from "@/lib/press-release-content"
 import { normalizeSourceDocumentMetadata } from "@/lib/source-document"
 
 export const runtime = "nodejs"
@@ -451,6 +452,17 @@ export async function POST(request: Request) {
             })
 
             return serverErrorResponse()
+        }
+
+        if (
+            isFinalSubmittedStatus(releaseInsert.status) &&
+            order.writing_option === "own"
+        ) {
+            const contentWordError = getPressReleaseWordError(body.content)
+
+            if (contentWordError) {
+                return badRequestResponse(contentWordError)
+            }
         }
 
         const [
