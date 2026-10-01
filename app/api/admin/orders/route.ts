@@ -48,6 +48,7 @@ const ORDER_SELECT_COLUMNS = `
     external_order_id,
     amount_total,
     currency,
+    writing_option,
     payment_status,
     order_status,
     created_at,
@@ -93,6 +94,7 @@ type OrderRow = {
     external_order_id: string
     amount_total: number
     currency: string
+    writing_option: "own" | "journalist" | null
     payment_status: string
     order_status: string
     created_at: string
